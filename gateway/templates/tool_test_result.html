@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}測試 {{ name }}{% endblock %}
+{% block content %}
+<a class="back" href="/tools/{{ name }}">← 回 {{ name }}</a>
+<h1>測試結果:{{ name }}</h1>
+<p class="sub">參數:<code>{{ args }}</code></p>
+<div class="resultbox">{{ result }}</div>
+{% endblock %}

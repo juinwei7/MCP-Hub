@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}新增下游{% endblock %}
+{% block content %}
+<a class="back" href="/">← 回 Servers</a>
+<h1>新增下游 MCP</h1>
+{% if err %}<div class="note no">{{ err }}</div>{% endif %}
+
+<div class="formcard" style="margin-bottom:20px">
+  <h3 style="margin:0 0 4px">⚡ 快速新增</h3>
+  <p class="hint">貼上任何 MCP server 的設定 JSON(就是各家 README 給的那種),或一鍵匯入你現有的 Claude 設定。可一次貼多台。</p>
+  <form method="post" action="/servers/import_config">
+    <textarea name="config" id="cfg" style="min-height:120px" placeholder='{"time": {"command": "python", "args": ["-m","mcp_server_time"]},
+ "sentry": {"url": "https://mcp.sentry.dev/mcp"}}'></textarea>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn primary" type="submit">貼上並新增</button>
+    </div>
+  </form>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">
+    <span class="hint" style="margin:0">範本:</span>
+    <button class="btn" type="button" onclick="fillCfg('time')">time</button>
+    <button class="btn" type="button" onclick="fillCfg('fetch')">fetch</button>
+    <button class="btn" type="button" onclick="fillCfg('remote')">遠端 HTTP</button>
+    <form class="inline" method="post" action="/servers/import_claude"><button class="btn">⇩ 匯入現有 Claude 設定</button></form>
+  </div>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--line);margin:6px 0 18px">
+<p class="sub">或手動填欄位(遠端 HTTP / 本機 stdio):</p>
+<form method="post" action="/servers/add"><div class="formcard">
+  <label>名稱</label><input name="name" placeholder="例如 我的 Redmine" required>
+  <label>Slug(工具前綴,留空自動產生)</label><input name="slug" placeholder="redmine">
+  <label>連線方式</label>
+  <select name="transport" id="transport">
+    <option value="http">遠端 HTTP</option>
+    <option value="stdio">本機指令 (stdio)</option>
+  </select>
+  <div id="grp-http">
+    <label>MCP 網址</label><input name="base_url" placeholder="http://127.0.0.1:9001/mcp">
+    <label>授權方式</label>
+    <select name="auth_type">
+      <option value="none">無</option>
+      <option value="bearer">Bearer token</option>
+      <option value="oauth">OAuth(需之後在詳情頁授權)</option>
+    </select>
+    <label>Bearer token(選 Bearer 才需要)</label><input name="bearer_token" placeholder="貼上 token">
+  </div>
+  <div id="grp-stdio" style="display:none">
+    <label>啟動指令 command</label><input name="command" placeholder="/專案/.venv/bin/python">
+    <label>參數 args(JSON 陣列)</label><textarea name="args" placeholder='["/path/to/server.py"]'></textarea>
+    <label>環境變數 env(JSON 物件,可放金鑰)</label><textarea name="env" placeholder='{"API_KEY": "..."}'></textarea>
+  </div>
+  <div class="actions">
+    <button class="btn primary" type="submit">新增並連線</button>
+    <a class="btn" href="/">取消</a>
+  </div>
+</div></form>
+{% endblock %}
+{% block scripts %}
+<script>
+var PY = {{ py_path|tojson }};
+function fillCfg(kind){
+  var t=document.getElementById('cfg'), v='';
+  if(kind==='time') v=JSON.stringify({time:{command:PY,args:["-m","mcp_server_time"]}},null,2);
+  else if(kind==='fetch') v=JSON.stringify({fetch:{command:PY,args:["-m","mcp_server_fetch"]}},null,2);
+  else v=JSON.stringify({myserver:{url:"https://example.com/mcp"}},null,2);
+  t.value=v;
+}
+(function(){var t=document.getElementById('transport');
+function upd(){var s=t.value==='stdio';
+document.getElementById('grp-stdio').style.display=s?'':'none';
+document.getElementById('grp-http').style.display=s?'none':'';}
+t.addEventListener('change',upd);upd();})();
+</script>
+{% endblock %}

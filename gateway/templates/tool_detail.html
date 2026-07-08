@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ name }}{% endblock %}
+{% block content %}
+<a class="back" href="/tools">← 回自訂工具</a>
+{% if msg %}<div class="note ok">{{ msg }}</div>{% endif %}
+<h1>{{ name }}</h1>
+<div style="display:flex;gap:10px;margin:0 0 18px">
+  <form class="inline" method="post" action="/tools/{{ name }}/toggle_enabled"><button class="btn">{% if enabled %}停用{% else %}啟用{% endif %}</button></form>
+  <form class="inline" method="post" action="/tools/{{ name }}/toggle_confirm"><button class="btn">{% if needs_confirm %}取消需確認{% else %}設為需確認{% endif %}</button></form>
+  <form class="inline" method="post" action="/tools/{{ name }}/delete" onsubmit="return confirm('確定刪除?')"><button class="btn danger">刪除</button></form>
+</div>
+{% include "_tool_form.html" %}
+<h3 style="margin-top:26px">測試執行</h3>
+<p class="hint">用 JSON 提供參數,直接打這個 API 看結果(不經過 Claude)。</p>
+<form method="post" action="/tools/{{ name }}/test"><div class="formcard">
+  <label>參數(JSON)</label><textarea name="args" placeholder='{"city":"台北"}'></textarea>
+  <div class="actions"><button class="btn primary" type="submit">執行測試</button></div>
+</div></form>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}挑選端點{% endblock %}
+{% block content %}
+<a class="back" href="/import">← 重新輸入</a>
+<h1>挑選要匯入的端點</h1>
+<p class="sub">Base URL:<code>{{ base }}</code> · 共 {{ ops|length }} 個端點。預設全不勾,請篩選後只挑要用的。</p>
+{% if ops|length > 60 %}
+<div class="note no">這個 API 有 {{ ops|length }} 個端點——太多了!別全選:工具一多會拖垮 AI 的選擇能力。只挑你真正要用的幾個(或這種大服務直接用官方 MCP server 當下游)。</div>
+{% endif %}
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+  <input id="filter" placeholder="篩選:路徑 / 描述 / 分類…" style="flex:1">
+  <button class="btn" id="selvis" type="button">勾選目前顯示</button>
+  <button class="btn" id="clr" type="button">全部取消</button>
+</div>
+<div id="count" class="note ok" style="margin-bottom:12px"></div>
+<form method="post" action="/import/create">
+  <input type="hidden" name="spec_url" value="{{ carry.spec_url }}">
+  <input type="hidden" name="spec_text" value="{{ carry.spec_text }}">
+  <input type="hidden" name="base_url" value="{{ base }}">
+  <input type="hidden" name="prefix" value="{{ carry.prefix }}">
+  <input type="hidden" name="group" value="{{ carry.group }}">
+  <input type="hidden" name="headers" value="{{ carry.headers }}">
+  <div class="card">
+  {% for op in ops %}
+    <label class="op-row toolrow" data-text="{{ op.text }}" style="cursor:pointer">
+      <span class="main"><span class="name">
+        <input type="checkbox" name="op" value="{{ op.op_id }}" style="width:auto;margin-right:8px">
+        <span class="pill count">{{ op.method }}</span> {{ op.path }}</span>
+        <span class="tooldesc">{{ op.summary }} · {{ op.nparams }} 參數</span></span>
+      <span class="right">{% for t in op.tags %}<span class="id">{{ t }}</span>{% endfor %}</span>
+    </label>
+  {% endfor %}
+  </div>
+  <div class="actions">
+    <button class="btn primary" type="submit">匯入勾選的</button>
+    <a class="btn" href="/tools">取消</a>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>(function(){
+var f=document.getElementById('filter'),rows=[].slice.call(document.querySelectorAll('.op-row')),cnt=document.getElementById('count');
+function upd(){var s=document.querySelectorAll('.op-row input:checked').length;cnt.textContent='已勾選 '+s+' 個'+(s>30?'  ⚠️ 太多,建議 30 個以內':'');}
+f.addEventListener('input',function(){var q=f.value.toLowerCase();rows.forEach(function(r){r.style.display=r.getAttribute('data-text').indexOf(q)>=0?'':'none';});});
+document.addEventListener('change',function(e){if(e.target&&e.target.name==='op')upd();});
+document.getElementById('selvis').addEventListener('click',function(){rows.forEach(function(r){if(r.style.display!=='none')r.querySelector('input').checked=true;});upd();});
+document.getElementById('clr').addEventListener('click',function(){rows.forEach(function(r){r.querySelector('input').checked=false;});upd();});
+upd();})();</script>
+{% endblock %}

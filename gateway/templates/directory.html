@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}公開目錄{% endblock %}
+{% block content %}
+<a class="back" href="/tools">← 回自訂工具</a>
+{% if error %}<div class="note no">{{ error }}</div>{% endif %}
+<h1>搜尋公開 API 目錄</h1>
+<form method="get" action="/directory" style="display:flex;gap:10px;margin-bottom:18px">
+  <input name="q" value="{{ q }}" placeholder="搜尋公開 API,例如 github、stripe、weather" autofocus>
+  <button class="btn primary" type="submit" style="flex:none">搜尋</button>
+</form>
+{% if q and not error %}
+<p class="sub">找到 {{ total }} 筆,顯示前 {{ results|length }} 筆。點「檢視並安裝」進入端點挑選。</p>
+<div class="card">
+{% for it in results %}
+  <div class="list-row">
+    <div class="main">
+      <div class="title">{{ it.title }} {% if it.provider %}<span class="chip">{{ it.provider }}</span>{% endif %}</div>
+      <div class="url">{{ it.id }}</div>
+      <div class="sub2">{{ it.description }}</div>
+    </div>
+    <div class="acts">
+      <form class="inline" method="post" action="/import/preview">
+        <input type="hidden" name="spec_url" value="{{ it.spec_url }}">
+        <button class="btn primary">檢視並安裝</button>
+      </form>
+    </div>
+  </div>
+{% else %}
+  <div class="empty">找不到符合的 API。</div>
+{% endfor %}
+</div>
+{% else %}
+<p class="sub">資料來源:APIs.guru(數千個公開 API 的 OpenAPI 規格)。輸入關鍵字開始。</p>
+{% endif %}
+{% endblock %}

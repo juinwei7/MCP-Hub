@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+actions.db
+*.db
+.secret_key
+.git/
+tests/
+*.md
+scratchpad/

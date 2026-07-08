@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}MCP Hub{% endblock %}</title>
+<style>
+:root{--ink:#131A22;--slate:#59636F;--slate2:#838D98;--line:#E2E6EC;--accent:#1D5C8F;
+--accent-soft:#E8F0F7;--read:#2C8060;--read-soft:#E4F1EB;--danger:#BE473C;--danger-soft:#F7E5E3;
+--warn:#B0741A;--warn-soft:#F6EDDD;--bg:#F5F7F9;--panel:#fff;
+--mono:"SF Mono",ui-monospace,Menlo,monospace;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);
+font-family:-apple-system,"PingFang TC","Helvetica Neue",sans-serif;line-height:1.6;}
+.nav{background:var(--panel);border-bottom:1px solid var(--line);}
+.nav .inner{max-width:820px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:20px;}
+.nav .brand{font-weight:800;letter-spacing:-.01em;}
+.nav a{color:var(--slate);text-decoration:none;font-size:14.5px;font-weight:600;}
+.nav a.on{color:var(--accent);}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px;}
+h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em;}
+h3{font-size:16px;}
+.sub{color:var(--slate);font-size:13.5px;margin:0 0 22px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px 22px;margin-bottom:16px;}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);}
+.row:last-child{border-bottom:none;}
+.row .main{min-width:0;}
+.row .name{font-weight:700;font-size:15.5px;}
+.row .meta{font-family:var(--mono);font-size:12px;color:var(--slate2);overflow:hidden;text-overflow:ellipsis;}
+.right{display:flex;align-items:center;gap:8px;flex:none;}
+.pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;font-family:var(--mono);white-space:nowrap;}
+.pill.on{background:var(--read-soft);color:#1f6049;}
+.pill.off{background:#EEF1F4;color:var(--slate2);}
+.pill.ok{background:var(--read-soft);color:#1f6049;}
+.pill.error{background:var(--danger-soft);color:#8f342b;}
+.pill.confirm{background:var(--warn-soft);color:#7d520f;}
+.pill.count{background:var(--accent-soft);color:var(--accent);}
+a.btn,button.btn{font:inherit;font-size:13px;font-weight:700;padding:7px 13px;border-radius:8px;
+border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;text-decoration:none;display:inline-block;}
+button.btn.primary,a.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+button.btn.danger{color:var(--danger);border-color:#E7C4bf;}
+button.btn:hover,a.btn:hover{filter:brightness(.97);}
+form.inline{display:inline;margin:0;}
+label{display:block;font-size:13px;font-weight:600;color:var(--slate);margin:14px 0 5px;}
+input,select,textarea{width:100%;font:inherit;font-size:14.5px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;}
+textarea{min-height:80px;font-family:var(--mono);font-size:13px;resize:vertical;}
+.hint{font-size:12px;color:var(--slate2);margin:4px 0 0;}
+.resultbox{background:#0f1720;color:#d6e2ec;border-radius:10px;padding:14px 16px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;margin-top:10px;}
+.formcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 24px 24px;}
+.actions{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap;}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;overflow-x:auto;margin:6px 0 0;}
+.empty{color:var(--slate);font-size:14px;padding:18px 0;}
+.toolrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+.toolrow:last-child{border-bottom:none;}
+.tooldesc{font-size:12.5px;color:var(--slate);}
+.back{display:inline-block;margin-bottom:16px;color:var(--accent);text-decoration:none;font-size:14px;}
+.note{margin:0 0 16px;padding:12px 16px;border-radius:10px;font-size:14px;font-weight:600;}
+.note.ok{background:var(--read-soft);color:#1f6049;} .note.no{background:var(--danger-soft);color:#8f342b;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--slate2);}
+td.mono{font-family:var(--mono);font-size:12px;}
+.id{font-family:var(--mono);font-size:12px;color:var(--slate2);}
+/* ── 共用清單元件(Servers / 分類 / 目錄 共用)────────── */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+.list-row{display:flex;align-items:flex-start;gap:13px;padding:16px 4px;border-bottom:1px solid var(--line);}
+.list-row:last-child{border-bottom:none;}
+.list-row.dim{opacity:.55;}
+.list-row .main{flex:1;min-width:0;}
+.list-row .title{font-weight:700;font-size:15.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.list-row .title a{color:inherit;text-decoration:none;}
+.list-row .title a:hover{color:var(--accent);}
+.list-row .sub2{font-size:12.5px;color:var(--slate);margin-top:3px;}
+.list-row .url{font-family:var(--mono);font-size:12px;color:var(--slate2);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.list-row .acts{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;margin-top:7px;}
+.dot.ok{background:var(--read);box-shadow:0 0 0 3px var(--read-soft);}
+.dot.error{background:var(--danger);box-shadow:0 0 0 3px var(--danger-soft);}
+.dot.off{background:var(--slate2);box-shadow:0 0 0 3px #EEF1F4;}
+.chip{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;background:#EEF1F4;
+  color:var(--slate);font-family:var(--mono);letter-spacing:.02em;}
+.cnt{font-size:12.5px;color:var(--slate2);font-weight:600;white-space:nowrap;}
+/* 總覽統計列 */
+.stats{display:flex;gap:30px;flex-wrap:wrap;padding:16px 22px;margin-bottom:16px;}
+.stats .stat{display:flex;flex-direction:column;gap:3px;}
+.stats .stat .n{font-size:23px;font-weight:800;letter-spacing:-.02em;line-height:1;}
+.stats .stat .n.ok{color:var(--read);} .stats .stat .n.err{color:var(--danger);}
+.stats .stat .l{font-size:12px;color:var(--slate2);font-weight:600;}
+{% block styles %}{% endblock %}
+</style>
+</head>
+<body>
+<div class="nav"><div class="inner">
+  <span class="brand">🧩 MCP Hub</span>
+  <a class="{% if active=='servers' %}on{% endif %}" href="/">Servers</a>
+  <a class="{% if active=='tools' %}on{% endif %}" href="/tools">自訂工具</a>
+  <a class="{% if active=='logs' %}on{% endif %}" href="/logs">Logs</a>
+  <a class="{% if active=='connect' %}on{% endif %}" href="/connect">接入</a>
+</div></div>
+<div class="wrap">
+{% block content %}{% endblock %}
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

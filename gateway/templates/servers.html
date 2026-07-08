@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Servers{% endblock %}
+{% block content %}
+<h1>Servers</h1>
+{% if msg %}<div class="note ok">{{ msg }}</div>{% endif %}
+<p class="sub">你接進 Hub 的下游 MCP。Claude 只連 Hub 一個,這些工具會自動合併出現。</p>
+
+{% if stats.servers %}
+<div class="card stats">
+  <div class="stat"><span class="n">{{ stats.servers }}</span><span class="l">下游</span></div>
+  <div class="stat"><span class="n">{{ stats.tools }}</span><span class="l">工具</span></div>
+  <div class="stat"><span class="n ok">{{ stats.healthy }}</span><span class="l">健康</span></div>
+  {% if stats.errored %}<div class="stat"><span class="n err">{{ stats.errored }}</span><span class="l">異常</span></div>{% endif %}
+</div>
+{% endif %}
+
+<div class="toolbar">
+  <a class="btn primary" href="/servers/add">+ 新增下游</a>
+  <a class="btn" href="/catalog">🛍 推薦 server</a>
+  <form class="inline" method="post" action="/servers/import_claude"><button class="btn">⇩ 匯入 Claude 設定</button></form>
+  <a class="btn" href="/config/export">⬆ 匯出設定</a>
+  {% if stats.servers %}<form class="inline" method="post" action="/servers/check_all"><button class="btn">🔄 全部檢查</button></form>{% endif %}
+</div>
+<div class="card">
+{% for s in servers %}
+  <div class="list-row {% if not s.enabled %}dim{% endif %}">
+    <span class="dot {{ s.dot }}" title="健康:{{ s.hlabel }}{% if s.hdetail %} — {{ s.hdetail }}{% endif %}"></span>
+    <div class="main">
+      <div class="title">
+        <a href="/servers/{{ s.slug }}">{{ s.name }}</a>
+        <span class="chip">{{ s.transport }}</span>
+        {% if not s.enabled %}<span class="chip">已停用</span>{% endif %}
+      </div>
+      <div class="url">{{ s.target }}</div>
+    </div>
+    <div class="acts">
+      <span class="cnt">{{ s.tool_count }} 工具</span>
+      <form class="inline" method="post" action="/servers/{{ s.slug }}/check"><button class="btn">檢查</button></form>
+      <form class="inline" method="post" action="/servers/{{ s.slug }}/toggle"><button class="btn">{{ s.toggle_label }}</button></form>
+      <a class="btn primary" href="/servers/{{ s.slug }}">詳情</a>
+    </div>
+  </div>
+{% else %}
+  <div class="empty">還沒有下游 MCP。按上面「+ 新增下游」加一台。</div>
+{% endfor %}
+</div>
+{% endblock %}

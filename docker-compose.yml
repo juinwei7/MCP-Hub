@@ -1,0 +1,12 @@
+services:
+  mcp-hub:
+    build: .
+    # 只綁 host 的 localhost —— 維持「無登入、僅本機可連」的安全取捨
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - hubdata:/data        # actions.db + .secret_key 持久化
+    restart: unless-stopped
+
+volumes:
+  hubdata:

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block styles %}
+.logs-sum{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;}
+.logs-sum .big{font-size:26px;font-weight:800;letter-spacing:-.02em;}
+.logs-sum .err{color:var(--danger);font-weight:700;}
+.logs-sum .ok{color:var(--read);font-weight:700;}
+.logs-bar{display:flex;gap:10px;margin:0 0 14px;align-items:center;}
+.logs-bar input{flex:1;}
+.logs-bar #erronly.active{background:var(--danger);color:#fff;border-color:var(--danger);}
+.logs-bar #autoref.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.pager{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:14px;}
+.pager .pageinfo{font-size:13px;color:var(--slate2);font-weight:600;}
+.tablewrap{overflow-x:auto;}
+.logs-t{table-layout:fixed;width:100%;}
+.logs-t td,.logs-t th{vertical-align:top;}
+.logs-t td.time{white-space:nowrap;color:var(--slate2);width:112px;}
+.logs-t td.tool{word-break:break-all;font-weight:600;}
+.logs-t td.tool .ns{color:var(--slate2);font-weight:400;}
+.logs-t td.args{font-family:var(--mono);font-size:12px;color:var(--slate);
+  white-space:pre-wrap;word-break:break-all;max-width:0;}
+.logs-t td.st{white-space:nowrap;width:130px;}
+.logs-t td.dur{text-align:right;white-space:nowrap;width:64px;font-family:var(--mono);font-size:12px;color:var(--slate2);}
+.logs-t td.err{font-family:var(--mono);font-size:12px;color:var(--danger);
+  white-space:pre-wrap;word-break:break-word;max-width:0;}
+.logs-t th.args,.logs-t th.err{width:auto;}
+{% endblock %}
+{% block content %}
+<h1>Logs</h1>
+<p class="sub">每一次經過 Hub 的工具呼叫</p>
+
+<div class="card" style="padding:16px 22px;">
+  <div class="logs-sum">
+    <span><span class="big">{{ total }}</span> 筆呼叫</span>
+    {% if errors %}<span class="err">● {{ errors }} 筆錯誤</span>
+    {% else %}<span class="ok">● 全部正常</span>{% endif %}
+  </div>
+</div>
+
+<div class="logs-bar">
+  <input id="filter" placeholder="篩選本頁工具 / 參數 / 錯誤…">
+  <button class="btn" id="erronly" type="button">只看錯誤</button>
+  <button class="btn" id="autoref" type="button">⏱ 自動更新</button>
+</div>
+
+<div class="card">
+{% if rows %}
+<div class="tablewrap">
+<table class="logs-t">
+  <thead><tr>
+    <th class="time">時間</th><th>工具</th><th class="args">參數</th>
+    <th class="st">狀態</th><th class="dur">耗時</th>{% if errors %}<th class="err">錯誤</th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="logrow" data-err="{{ '1' if r.status_cls=='error' else '0' }}"
+        data-text="{{ (r.tool ~ ' ' ~ r.args ~ ' ' ~ r.error)|lower }}">
+      <td class="time">{{ r.time }}</td>
+      <td class="tool">{% if r.ns %}<span class="ns">{{ r.ns }}__</span>{% endif %}{{ r.tname }}</td>
+      <td class="args">{{ r.args }}</td>
+      <td class="st"><span class="pill {{ r.status_cls }}">{{ r.status }}</span></td>
+      <td class="dur">{{ r.dur }}</td>
+      {% if errors %}<td class="err">{{ r.error }}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty">還沒有呼叫紀錄。接上 Claude 跑幾個工具後就會出現。</div>
+{% endif %}
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a class="btn" href="/logs?page={{ page - 1 }}">← 上一頁</a>
+  {% else %}<span class="btn" style="opacity:.4;cursor:default">← 上一頁</span>{% endif %}
+  <span class="pageinfo">第 {{ page }} / {{ pages }} 頁</span>
+  {% if page < pages %}<a class="btn" href="/logs?page={{ page + 1 }}">下一頁 →</a>
+  {% else %}<span class="btn" style="opacity:.4;cursor:default">下一頁 →</span>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>(function(){
+var f=document.getElementById('filter'),eo=document.getElementById('erronly'),
+rows=[].slice.call(document.querySelectorAll('.logrow')),errMode=false;
+function apply(){var q=f.value.toLowerCase();
+  rows.forEach(function(r){
+    var okText=r.getAttribute('data-text').indexOf(q)>=0;
+    var okErr=!errMode||r.getAttribute('data-err')==='1';
+    r.style.display=(okText&&okErr)?'':'none';});}
+if(f){f.addEventListener('input',apply);
+  eo.addEventListener('click',function(){errMode=!errMode;
+    eo.classList.toggle('active',errMode);
+    eo.textContent=errMode?'顯示全部':'只看錯誤';apply();});}
+// 自動更新(5 秒重整,狀態存 localStorage 跨重整保留)
+var ar=document.getElementById('autoref'),timer=null;
+function setAR(on){
+  try{localStorage.mcpLogsAutoRefresh=on?'1':'';}catch(e){}
+  ar.classList.toggle('active',on);
+  ar.textContent=on?'⏸ 停止自動更新':'⏱ 自動更新';
+  if(timer){clearTimeout(timer);timer=null;}
+  if(on){timer=setTimeout(function(){location.reload();},5000);}
+}
+if(ar){ar.addEventListener('click',function(){setAR(ar.classList.contains('active')?false:true);});
+  var saved=false;try{saved=localStorage.mcpLogsAutoRefresh==='1';}catch(e){}
+  setAR(saved);}
+})();</script>
+{% endblock %}

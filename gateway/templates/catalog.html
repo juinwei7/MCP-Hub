@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}推薦 server{% endblock %}
+{% block styles %}
+.cat-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:16px 4px;border-bottom:1px solid var(--line);}
+.cat-row:last-child{border-bottom:none;}
+.cat-row .main{flex:1;min-width:0;}
+.cat-row .name{font-weight:700;font-size:15.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cat-row .right{flex:none;}
+.rt{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;font-family:var(--mono);}
+.rt.python{background:var(--accent-soft);color:var(--accent);}
+.rt.node{background:var(--read-soft);color:#1f6049;}
+.tag{font-size:11px;color:var(--slate2);margin-right:8px;}
+.cat-row .tooldesc{font-size:12.5px;color:var(--slate);margin-top:3px;}
+{% endblock %}
+{% block content %}
+<a class="back" href="/">← 回 Servers</a>
+<h1>推薦 server 目錄</h1>
+<p class="sub">官方精選、能在本機直接接上的 MCP server。<b>Python</b> 版一鍵 <code>pip</code> 裝進本專案;
+<b>Node</b> 版用 <code>npx</code> 執行(需本機有 Node.js)。</p>
+{% if msg %}<div class="note ok">{{ msg }}</div>{% endif %}
+{% if not node_ok %}<div class="note no">偵測不到 <code>npx</code>,Node 版的 server 需先<a href="https://nodejs.org/" target="_blank">安裝 Node.js</a> 才能一鍵加入。</div>{% endif %}
+<input id="filter" placeholder="搜尋名稱 / 描述 / 分類…" style="margin-bottom:14px">
+<div class="card">
+{% for it in items %}
+  <div class="cat-row" data-text="{{ it.name }} {{ it.desc }} {{ it.tags|join(' ') }} {{ it.runtime }}">
+    <div class="main">
+      <div class="name">
+        {{ it.name }}
+        <span class="rt {{ it.runtime }}">{{ 'Python' if it.runtime == 'python' else 'Node' }}</span>
+      </div>
+      <div class="tooldesc">{{ it.desc }}</div>
+      <div style="margin-top:6px">{% for t in it.tags %}<span class="tag">#{{ t }}</span>{% endfor %}</div>
+    </div>
+    <div class="right">
+      {% if it.added %}<span class="pill on">已加入</span>
+      {% elif it.blocked %}<span class="pill off" title="需先安裝 Node.js">需 Node</span>
+      {% else %}
+      <form class="inline" method="post" action="/catalog/add">
+        <input type="hidden" name="id" value="{{ it.id }}">
+        <button class="btn primary">安裝並加入</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}
+</div>
+<p class="hint">找不到想要的?用「新增下游 → 貼上 MCP 設定 JSON」貼任何 server 的設定即可。</p>
+{% endblock %}
+{% block scripts %}
+<script>(function(){var f=document.getElementById('filter'),rows=[].slice.call(document.querySelectorAll('.cat-row'));
+f.addEventListener('input',function(){var q=f.value.toLowerCase();
+rows.forEach(function(r){r.style.display=r.getAttribute('data-text').toLowerCase().indexOf(q)>=0?'':'none';});});})();</script>
+{% endblock %}

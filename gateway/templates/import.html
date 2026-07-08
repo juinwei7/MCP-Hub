@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}OpenAPI 匯入{% endblock %}
+{% block content %}
+<a class="back" href="/tools">← 回自訂工具</a>
+{% if error %}<div class="note no">{{ error }}</div>{% endif %}
+<h1>從 OpenAPI 匯入</h1>
+<p class="sub">給一份 OpenAPI/Swagger 規格,挑要哪些端點,一鍵生成自訂工具。</p>
+<form method="post" action="/import/preview"><div class="formcard">
+  <label>🔎 服務根網址(自動探測 spec,不用自己找)</label>
+  <input name="probe_url" placeholder="http://127.0.0.1:9100">
+  <p class="hint">填服務根網址,按「自動探測」試 /openapi.json、/swagger.json、/v3/api-docs… 找到就直接進預覽。</p>
+  <hr style="border:none;border-top:1px solid var(--line);margin:18px 0">
+  <label>Spec 網址(JSON/YAML;或直接貼在下面)</label>
+  <input name="spec_url" placeholder="http://127.0.0.1:9100/openapi.json">
+  <label>或貼上 spec 內容</label><textarea name="spec_text" placeholder="(選填,貼上就用這個)"></textarea>
+  <label>Base URL 覆寫(留空用 spec 內定)</label><input name="base_url" placeholder="http://127.0.0.1:9100">
+  <label>工具名稱前綴(選填,例如 gh_)</label><input name="prefix" placeholder="gh_">
+  <label>分組名稱(選填,留空用前綴)</label><input name="group" placeholder="GitHub">
+  <label>共用 Headers(JSON,套到所有生成的工具)</label><textarea name="headers" placeholder='{"Authorization": "Bearer YOUR_KEY"}'></textarea>
+  <div class="actions">
+    <button class="btn" type="submit" formaction="/import/probe">🔎 自動探測</button>
+    <button class="btn primary" type="submit">解析並預覽</button>
+    <a class="btn" href="/tools">取消</a>
+  </div>
+</div></form>
+{% endblock %}

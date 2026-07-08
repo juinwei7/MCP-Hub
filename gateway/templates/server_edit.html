@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}編輯 {{ s.name }}{% endblock %}
+{% block content %}
+<a class="back" href="/servers/{{ s.slug }}">← 回 {{ s.name }}</a>
+<h1>編輯下游:{{ s.name }}</h1>
+<p class="sub">Slug <code>{{ s.slug }}</code>(不可改)。改完存檔會自動重新連線測試。</p>
+<form method="post" action="/servers/{{ s.slug }}/edit"><div class="formcard">
+  <label>名稱</label><input name="name" value="{{ s.name }}" required>
+  <label>連線方式</label>
+  <select name="transport" id="transport">
+    <option value="http" {% if s.transport=='http' %}selected{% endif %}>遠端 HTTP</option>
+    <option value="stdio" {% if s.transport=='stdio' %}selected{% endif %}>本機指令 (stdio)</option>
+  </select>
+  <div id="grp-http">
+    <label>MCP 網址</label><input name="base_url" value="{{ s.base_url }}" placeholder="http://127.0.0.1:9001/mcp">
+    <label>授權方式</label>
+    <select name="auth_type">
+      <option value="none" {% if s.auth_type=='none' %}selected{% endif %}>無</option>
+      <option value="bearer" {% if s.auth_type=='bearer' %}selected{% endif %}>Bearer token</option>
+      <option value="oauth" {% if s.auth_type=='oauth' %}selected{% endif %}>OAuth</option>
+    </select>
+    <label>Bearer token</label><input name="bearer_token" value="{{ s.bearer_token or '' }}" placeholder="貼上 token">
+  </div>
+  <div id="grp-stdio" style="display:none">
+    <label>啟動指令 command</label><input name="command" value="{{ s.command or '' }}" placeholder="/專案/.venv/bin/python">
+    <label>參數 args(JSON 陣列)</label><textarea name="args">{{ s.args }}</textarea>
+    <label>環境變數 env(JSON 物件)</label><textarea name="env">{{ s.env }}</textarea>
+  </div>
+  <div class="actions">
+    <button class="btn primary" type="submit">儲存並重新連線</button>
+    <a class="btn" href="/servers/{{ s.slug }}">取消</a>
+  </div>
+</div></form>
+{% endblock %}
+{% block scripts %}
+<script>(function(){var t=document.getElementById('transport');
+function upd(){var s=t.value==='stdio';
+document.getElementById('grp-stdio').style.display=s?'':'none';
+document.getElementById('grp-http').style.display=s?'none':'';}
+t.addEventListener('change',upd);upd();})();</script>
+{% endblock %}

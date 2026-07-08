@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block content %}
+<a class="back" href="/">← 回 Servers</a>
+{% if msg %}<div class="note ok">{{ msg }}</div>{% endif %}
+<h1>{{ s.name }}</h1>
+<p class="sub">{{ s.base_url }} · 授權:{{ s.auth_desc }}</p>
+<div style="display:flex;gap:10px;margin-bottom:18px">
+  <form class="inline" method="post" action="/servers/{{ s.slug }}/refresh"><button class="btn primary">重新整理工具</button></form>
+  <a class="btn" href="/servers/{{ s.slug }}/edit">編輯</a>
+  {% if s.is_oauth %}<a class="btn" href="/servers/{{ s.slug }}/oauth/start">OAuth 授權</a>{% endif %}
+  <form class="inline" method="post" action="/servers/{{ s.slug }}/delete" onsubmit="return confirm('確定刪除這台下游?')"><button class="btn danger">刪除下游</button></form>
+</div>
+{% if tools %}
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+  <input id="toolfilter" placeholder="搜尋工具名稱 / 描述…" style="flex:1;margin:0">
+  <form class="inline" method="post" action="/servers/{{ s.slug }}/tools/enable_all"><button class="btn" style="flex:none">全部啟用</button></form>
+  <form class="inline" method="post" action="/servers/{{ s.slug }}/tools/disable_all"><button class="btn" style="flex:none">全部停用</button></form>
+</div>
+{% endif %}
+<div class="card">
+{% for t in tools %}
+  <div class="toolrow op-row" data-text="{{ t.name }} {{ t.desc_override or t.description }}">
+    <div class="main" style="min-width:0">
+      <div class="name">{{ t.name }} {% if t.needs_confirm %}<span class="pill confirm">需確認</span>{% endif %}{% if t.desc_override %}<span class="pill on" style="margin-left:6px">已改描述</span>{% endif %}</div>
+      <div class="tooldesc">{{ t.desc_override or t.description }}</div>
+      <details style="margin-top:4px">
+        <summary class="hint" style="cursor:pointer">✎ 改描述(給 AI 判斷用途)</summary>
+        <form method="post" action="/servers/{{ s.slug }}/tools/{{ t.name }}/desc" style="display:flex;gap:6px;margin-top:6px">
+          <input name="desc" value="{{ t.desc_override or t.description or '' }}" style="flex:1">
+          <button class="btn" style="flex:none">存</button>
+        </form>
+        <div class="hint" style="margin-top:4px">留空存檔＝還原成下游原始描述</div>
+      </details>
+    </div>
+    <div class="right">
+      <span class="pill {% if t.enabled %}on{% else %}off{% endif %}">{% if t.enabled %}已啟用{% else %}已停用{% endif %}</span>
+      <form class="inline" method="post" action="/servers/{{ s.slug }}/tools/{{ t.name }}/toggle_enabled"><button class="btn">{% if t.enabled %}停用{% else %}啟用{% endif %}</button></form>
+      <form class="inline" method="post" action="/servers/{{ s.slug }}/tools/{{ t.name }}/toggle_confirm"><button class="btn">{% if t.needs_confirm %}取消確認{% else %}設為需確認{% endif %}</button></form>
+    </div>
+  </div>
+{% else %}
+  <div class="empty">還沒抓到工具。按「重新整理」連線抓取。</div>
+{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>(function(){
+var f=document.getElementById('toolfilter');if(!f)return;
+var rows=[].slice.call(document.querySelectorAll('.op-row'));
+f.addEventListener('input',function(){var q=f.value.toLowerCase();
+  rows.forEach(function(r){r.style.display=r.getAttribute('data-text').toLowerCase().indexOf(q)>=0?'':'none';});});
+})();</script>
+{% endblock %}

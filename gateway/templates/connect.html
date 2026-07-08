@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}接入 Hub{% endblock %}
+{% block styles %}
+.snip{position:relative;}
+.snip pre{padding-right:64px;}
+.copy{position:absolute;top:8px;right:8px;font-size:12px;font-weight:700;padding:4px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);cursor:pointer;}
+.copy:hover{filter:brightness(.96);}
+.step{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700;}
+{% endblock %}
+{% block content %}
+<h1>接入 Hub</h1>
+<p class="sub">你的 Hub 是一台 stdio MCP server,各家 client 都是「把它當一台 MCP 加進去」。以下設定已填好你本機的實際路徑,直接複製即可。</p>
+
+<h3 style="margin-top:10px">Claude Code(CLI)</h3>
+<p class="hint">在終端機執行(local scope,只對目前專案);之後開新 session 生效。</p>
+<div class="snip"><button class="copy" data-t="c1">複製</button>
+<pre id="c1">claude mcp add my-hub -e PYTHONPATH="{{ proj }}" -- "{{ py }}" -m gateway.hub_server</pre></div>
+
+<h3>Claude Desktop(App)</h3>
+<p class="hint">編輯 <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>,把 <code>my-hub</code> 加進 <code>mcpServers</code>,然後<b>完全關閉再重開</b> Claude Desktop。</p>
+<div class="snip"><button class="copy" data-t="c2">複製</button>
+<pre id="c2">{
+  "mcpServers": {
+    "my-hub": {
+      "command": "{{ py }}",
+      "args": ["-m", "gateway.hub_server"],
+      "env": { "PYTHONPATH": "{{ proj }}" }
+    }
+  }
+}</pre></div>
+
+<h3>Cursor</h3>
+<p class="hint">編輯 <code>~/.cursor/mcp.json</code>(格式同上)。</p>
+<div class="snip"><button class="copy" data-t="c3">複製</button>
+<pre id="c3">{
+  "mcpServers": {
+    "my-hub": {
+      "command": "{{ py }}",
+      "args": ["-m", "gateway.hub_server"],
+      "env": { "PYTHONPATH": "{{ proj }}" }
+    }
+  }
+}</pre></div>
+
+<h3>其他 MCP client(通用)</h3>
+<p class="hint">凡是支援 stdio MCP 的 client,填以下三項即可:</p>
+<div class="snip"><button class="copy" data-t="c4">複製</button>
+<pre id="c4">command : {{ py }}
+args    : ["-m", "gateway.hub_server"]
+env     : { "PYTHONPATH": "{{ proj }}" }</pre></div>
+
+<div class="note ok" style="margin-top:22px">接上後,client 的工具清單會出現你 Hub 聚合的所有下游工具(如 <code>orgpulse__…</code>)。要移除:<code>claude mcp remove my-hub</code>,或從設定檔刪掉那段。</div>
+<p class="hint">註:目前是 stdio(client 自行啟動 Hub)。若想改成「貼一個 URL 就連」的遠端 Hub,需另把 hub_server 跑成 HTTP 服務(未來項目)。</p>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('.copy').forEach(function(b){
+  b.addEventListener('click', function(){
+    var el=document.getElementById(b.getAttribute('data-t'));
+    navigator.clipboard.writeText(el.innerText).then(function(){
+      var o=b.textContent; b.textContent='已複製'; setTimeout(function(){b.textContent=o;},1200);
+    });
+  });
+});
+</script>
+{% endblock %}

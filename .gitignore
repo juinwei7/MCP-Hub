@@ -1,0 +1,22 @@
+# 執行期狀態與密鑰 —— 絕不進版控
+actions.db
+actions.db-shm
+actions.db-wal
+*.db
+*.db-shm
+*.db-wal
+.secret_key
+*.log
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# IDE / 系統
+.idea/
+.vscode/
+.DS_Store
+
+# 暫存 / roadmap
+optimization.html
