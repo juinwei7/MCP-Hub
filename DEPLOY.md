@@ -34,7 +34,7 @@ docker compose up -d --build
 
 - 管理台:http://localhost:8765(compose 只綁 `127.0.0.1`,維持「無登入、僅本機可連」)。
 - `actions.db` + `.secret_key` 存在具名 volume `hubdata`,容器重建不遺失。
-- 映像內含 **git / Node(npx)**,所以推薦目錄裡的 Node 版與 git server 在容器內也能跑。
+- 映像內含 **git / Node(npx)**,讓需要這些執行環境的 stdio 下游在容器內也能跑。
 
 ### 讓 Claude 接上容器裡的 Hub
 

@@ -1,0 +1,282 @@
+{% if error %}<div class="note no">{{ error }}</div>{% endif %}
+<form method="post" action="{{ action }}" id="composite-form">
+  <div class="formcard composite-editor">
+    <section class="editor-section">
+      <div class="section-head">
+        <div><h3>基本資料</h3><p class="hint">讓 AI 知道這個工具何時該被使用。</p></div>
+      </div>
+      <label>工具名稱</label>
+      {% if is_edit %}<input name="name" value="{{ name }}" readonly>{% else %}<input name="name" placeholder="weekly_report" pattern="[a-zA-Z0-9_-]+" required>{% endif %}
+      <div class="two-cols">
+        <div><label>分組（選填）</label><input name="group" value="{{ group }}" placeholder="Reports"></div>
+        <div><label>描述</label><input name="description" value="{{ description }}" placeholder="使用者提到週報時，彙整本週工作" required></div>
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <div class="section-head">
+        <div><h3>需要使用者提供什麼？</h3><p class="hint">沒有輸入參數也可以，執行時會直接開始查詢。</p></div>
+        <button class="btn" type="button" id="add-input-btn">＋ 新增輸入</button>
+      </div>
+      <div id="input-builder" class="builder-list"></div>
+      <div id="input-empty" class="empty-state">目前不需要輸入參數</div>
+    </section>
+
+    <section class="editor-section">
+      <div class="section-head">
+        <div><h3>要執行哪些工具？</h3><p class="hint">加入工具並設定順序，Hub 會依序執行後一次回傳結果。</p></div>
+        <button class="btn" type="button" id="add-step-btn">＋ 加入工具</button>
+      </div>
+      <div id="step-builder" class="builder-list"></div>
+    </section>
+
+    <input type="hidden" name="output" value="collect">
+    <input type="hidden" id="params-json" name="params" value="{{ params_val | e }}">
+    <input type="hidden" id="steps-json" name="steps" value="{{ steps_val | e }}">
+
+    <details class="advanced-json">
+      <summary>查看產生的 JSON</summary>
+      <pre id="json-preview"></pre>
+    </details>
+
+    <div class="actions">
+      <button class="btn primary" type="submit">{% if is_edit %}儲存變更{% else %}建立複合工具{% endif %}</button>
+      <a class="btn" href="/composites">取消</a>
+    </div>
+  </div>
+</form>
+
+<template id="input-template">
+  <div class="builder-row input-row">
+    <div class="row-main input-grid">
+      <div><label>名稱</label><input class="input-name" placeholder="week"></div>
+      <div><label>類型</label><select class="input-type"><option value="string">文字</option><option value="number">數字</option><option value="integer">整數</option><option value="boolean">是／否</option></select></div>
+      <div><label>說明</label><input class="input-description" placeholder="哪一週，預設本週"></div>
+      <label class="check-label"><input class="input-required" type="checkbox"> 必填</label>
+    </div>
+    <button class="icon-btn remove-input-btn" type="button" title="移除">×</button>
+  </div>
+</template>
+
+<template id="step-template">
+  <div class="step-card">
+    <div class="step-header">
+      <div><span class="step-number"></span><strong class="step-tool-name">尚未選擇工具</strong></div>
+      <div class="compact-actions">
+        <button class="icon-btn move-up-btn" type="button" title="上移">↑</button>
+        <button class="icon-btn move-down-btn" type="button" title="下移">↓</button>
+        <button class="icon-btn remove-step-btn" type="button" title="移除">×</button>
+      </div>
+    </div>
+    <div class="step-body">
+      <label>選擇工具</label>
+      <select class="step-tool"></select>
+      <p class="tool-desc hint"></p>
+      <div class="param-fields"></div>
+    </div>
+  </div>
+</template>
+
+<script type="application/json" id="available-tools-data">{{ available_tools_json | safe }}</script>
+<script type="application/json" id="params-init-data">{{ params_init | safe }}</script>
+<script type="application/json" id="steps-init-data">{{ steps_init | safe }}</script>
+<script>
+(() => {
+  const form = document.getElementById("composite-form");
+  if (!form) return;
+  const tools = JSON.parse(document.getElementById("available-tools-data").textContent || "[]");
+  const initialInputs = JSON.parse(document.getElementById("params-init-data").textContent || "[]");
+  const initialSteps = JSON.parse(document.getElementById("steps-init-data").textContent || "[]");
+  const toolMap = new Map(tools.map(tool => [tool.name, tool]));
+  const inputBuilder = document.getElementById("input-builder");
+  const stepBuilder = document.getElementById("step-builder");
+
+  function parseFixedValue(raw, type) {
+    if (type === "boolean") return raw === "true";
+    if (type === "number" || type === "integer") return raw === "" ? undefined : Number(raw);
+    return raw === "" ? undefined : raw;
+  }
+
+  function inputNames() {
+    return [...inputBuilder.querySelectorAll(".input-name")].map(el => el.value.trim()).filter(Boolean);
+  }
+
+  function refreshInputState() {
+    document.getElementById("input-empty").hidden = inputBuilder.children.length > 0;
+    refreshReferenceOptions();
+    updateJson();
+  }
+
+  function addInput(param = {}) {
+    const row = document.getElementById("input-template").content.firstElementChild.cloneNode(true);
+    row.querySelector(".input-name").value = param.name || "";
+    row.querySelector(".input-type").value = param.type || "string";
+    row.querySelector(".input-description").value = param.description || "";
+    row.querySelector(".input-required").checked = Boolean(param.required);
+    row.querySelector(".remove-input-btn").addEventListener("click", () => { row.remove(); refreshInputState(); });
+    row.querySelectorAll("input,select").forEach(el => el.addEventListener("input", refreshInputState));
+    inputBuilder.appendChild(row);
+    refreshInputState();
+  }
+
+  function buildToolOptions(select, selected) {
+    select.innerHTML = '<option value="">搜尋或選擇工具…</option>';
+    const groups = new Map();
+    tools.forEach(tool => {
+      const group = tool.kind === "custom" ? "自訂工具" : (tool.name.split("__")[0] || "MCP 工具");
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(tool);
+    });
+    groups.forEach((items, label) => {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = label;
+      items.forEach(tool => {
+        const option = document.createElement("option");
+        option.value = tool.name;
+        option.textContent = tool.name.includes("__") ? tool.name.split("__").slice(1).join("__") : tool.name;
+        option.selected = tool.name === selected;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
+    });
+  }
+
+  function valueForDisplay(value) {
+    if (value === undefined || value === null) return "";
+    return typeof value === "object" ? JSON.stringify(value) : String(value);
+  }
+
+  function renderToolParams(card, toolName, args = {}) {
+    const def = toolMap.get(toolName) || {params: [], description: ""};
+    card.querySelector(".step-tool-name").textContent = toolName || "尚未選擇工具";
+    card.querySelector(".tool-desc").textContent = def.description || "";
+    const fields = card.querySelector(".param-fields");
+    fields.innerHTML = "";
+    if (!(def.params || []).length && toolName) {
+      fields.innerHTML = '<div class="no-params">這個工具不需要參數</div>';
+      return;
+    }
+    (def.params || []).forEach(param => {
+      const current = args[param.name];
+      const isReference = typeof current === "string" && /^\{\{input\.[^}]+\}\}$/.test(current);
+      const row = document.createElement("div");
+      row.className = "step-param";
+      row.dataset.paramName = param.name;
+      row.dataset.paramType = param.type || "string";
+      row.innerHTML = `
+        <div class="param-label"><strong>${param.name}</strong>${param.required ? '<span class="required-mark">必填</span>' : ''}<span>${param.description || ''}</span></div>
+        <select class="value-source"><option value="fixed">固定值</option><option value="input">引用輸入</option></select>
+        <input class="fixed-value" placeholder="輸入固定值">
+        <select class="input-reference"></select>`;
+      row.querySelector(".value-source").value = isReference ? "input" : "fixed";
+      row.querySelector(".fixed-value").value = isReference ? "" : valueForDisplay(current);
+      row.dataset.reference = isReference ? current.slice(8, -2) : "";
+      row.querySelector(".value-source").addEventListener("change", () => { syncParamMode(row); updateJson(); });
+      row.querySelectorAll("input,select").forEach(el => el.addEventListener("input", updateJson));
+      fields.appendChild(row);
+      syncParamMode(row);
+    });
+    refreshReferenceOptions();
+  }
+
+  function syncParamMode(row) {
+    const referenceMode = row.querySelector(".value-source").value === "input";
+    row.querySelector(".fixed-value").hidden = referenceMode;
+    row.querySelector(".input-reference").hidden = !referenceMode;
+  }
+
+  function refreshReferenceOptions() {
+    const names = inputNames();
+    document.querySelectorAll(".input-reference").forEach(select => {
+      const selected = select.value || select.closest(".step-param").dataset.reference;
+      select.innerHTML = names.length ? names.map(name => `<option value="${name}">${name}</option>`).join("") : '<option value="">請先新增輸入參數</option>';
+      if (names.includes(selected)) select.value = selected;
+    });
+  }
+
+  function refreshSteps() {
+    [...stepBuilder.querySelectorAll(".step-card")].forEach((card, index) => {
+      card.querySelector(".step-number").textContent = `${index + 1}`;
+    });
+    updateJson();
+  }
+
+  function addStep(step = {}) {
+    const card = document.getElementById("step-template").content.firstElementChild.cloneNode(true);
+    const select = card.querySelector(".step-tool");
+    buildToolOptions(select, step.tool || "");
+    renderToolParams(card, step.tool || "", step.args || {});
+    select.addEventListener("change", () => { renderToolParams(card, select.value, {}); updateJson(); });
+    card.querySelector(".remove-step-btn").addEventListener("click", () => { card.remove(); refreshSteps(); });
+    card.querySelector(".move-up-btn").addEventListener("click", () => { const prev = card.previousElementSibling; if (prev) stepBuilder.insertBefore(card, prev); refreshSteps(); });
+    card.querySelector(".move-down-btn").addEventListener("click", () => { const next = card.nextElementSibling; if (next) stepBuilder.insertBefore(next, card); refreshSteps(); });
+    stepBuilder.appendChild(card);
+    refreshSteps();
+  }
+
+  function collectInputs() {
+    return [...inputBuilder.querySelectorAll(".input-row")].map(row => ({
+      name: row.querySelector(".input-name").value.trim(),
+      type: row.querySelector(".input-type").value,
+      required: row.querySelector(".input-required").checked,
+      description: row.querySelector(".input-description").value.trim(),
+    })).filter(param => param.name);
+  }
+
+  function collectSteps() {
+    return [...stepBuilder.querySelectorAll(".step-card")].map((card, index) => {
+      const args = {};
+      card.querySelectorAll(".step-param").forEach(row => {
+        const source = row.querySelector(".value-source").value;
+        if (source === "input") {
+          const name = row.querySelector(".input-reference").value;
+          if (name) args[row.dataset.paramName] = "{" + "{input." + name + "}" + "}";
+        } else {
+          const value = parseFixedValue(row.querySelector(".fixed-value").value, row.dataset.paramType);
+          if (value !== undefined) args[row.dataset.paramName] = value;
+        }
+      });
+      const tool = card.querySelector(".step-tool").value;
+      const base = tool.includes("__") ? tool.split("__").pop() : tool;
+      return {id: `${base || "step"}_${index + 1}`, tool, args};
+    }).filter(step => step.tool);
+  }
+
+  function updateJson() {
+    const params = collectInputs();
+    const steps = collectSteps();
+    document.getElementById("params-json").value = JSON.stringify(params);
+    document.getElementById("steps-json").value = JSON.stringify(steps);
+    document.getElementById("json-preview").textContent = JSON.stringify({params, steps, output: "collect"}, null, 2);
+  }
+
+  document.getElementById("add-input-btn").addEventListener("click", () => addInput({}));
+  document.getElementById("add-step-btn").addEventListener("click", () => addStep({}));
+  form.addEventListener("submit", event => {
+    updateJson();
+    if (!collectSteps().length) { event.preventDefault(); alert("請至少選擇一個工具"); }
+  });
+  initialInputs.forEach(addInput);
+  initialSteps.forEach(addStep);
+  if (!initialSteps.length) addStep({});
+  refreshInputState();
+})();
+</script>
+
+<style>
+.composite-editor{padding:0 26px 26px}.editor-section{padding:24px 0;border-bottom:1px solid var(--line)}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.section-head h3{margin:0;font-size:17px}.section-head .hint{margin-top:2px}
+.two-cols{display:grid;grid-template-columns:1fr 2fr;gap:14px}.builder-list{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.empty-state,.no-params{padding:18px;text-align:center;border:1px dashed var(--line);border-radius:10px;color:var(--slate2);font-size:13px;margin-top:14px}
+.builder-row,.step-card{border:1px solid var(--line);border-radius:12px;background:#FBFCFD}.builder-row{display:flex;align-items:center;gap:10px;padding:14px}
+.row-main{flex:1}.input-grid{display:grid;grid-template-columns:1fr 130px 2fr auto;gap:10px;align-items:end}.input-grid label{margin-top:0}
+.check-label{display:flex;align-items:center;gap:7px;padding:10px 4px;margin:0;white-space:nowrap}.check-label input{width:auto}
+.icon-btn{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:white;cursor:pointer;font-size:18px;color:var(--slate)}
+.step-header{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line)}
+.step-header>div:first-child{display:flex;align-items:center;gap:9px;min-width:0}.step-tool-name{font-family:var(--mono);font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.step-number{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:12px}.compact-actions{display:flex;gap:5px}.step-body{padding:4px 14px 16px}
+.step-param{display:grid;grid-template-columns:minmax(180px,1fr) 120px minmax(180px,1fr);gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.param-label{display:flex;flex-direction:column;font-size:12px;color:var(--slate2)}.param-label strong{color:var(--ink);font-family:var(--mono);font-size:13px}.required-mark{display:inline-block;color:var(--danger);font-size:10px}
+.advanced-json{margin-top:18px;color:var(--slate);font-size:12px}.advanced-json summary{cursor:pointer}.advanced-json pre{max-height:260px}
+@media(max-width:700px){.two-cols,.input-grid,.step-param{grid-template-columns:1fr}.section-head{align-items:flex-start}.builder-row{align-items:flex-start}.composite-editor{padding-left:16px;padding-right:16px}}
+</style>

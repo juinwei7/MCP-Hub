@@ -34,12 +34,12 @@ Hub 的雙角色:**對 Claude 是 MCP Server;對下游是 MCP Client**(連上就
 
 - **聚合下游**:同時支援遠端 **HTTP** 與本機 **stdio** 兩種 MCP server,工具以 `下游__工具名` 命名空間合併曝露。
 - **自訂工具**:把任意 HTTP API 直接包成 MCP 工具(填 URL / 參數 / headers),或從 **OpenAPI** 規格匯入;可分類、批次套用金鑰 headers。
-- **推薦目錄**:內建官方 reference server 一鍵安裝(Python 版走 `pip` / Node 版走 `npx`)。
 - **可選人工確認**:把危險工具標為「需確認」,呼叫時走 in-chat 確認或票券核准。
 - **金鑰靜態加密**:bearer token / env / headers / OAuth token 以 Fernet 加密存 SQLite,金鑰另存 `.secret_key`(0600 權限)。
 - **健康監測**:背景定時檢查下游,綠燈 / 紅燈一目了然,支援一鍵「全部檢查」。
 - **呼叫記錄**:每次經 Hub 的工具呼叫都入庫,管理台可分頁、篩選、只看錯誤、自動更新。
 - **匯入 / 匯出**:貼上 mcpServers JSON 或匯入 Claude 設定;可匯出可攜設定。
+- **MCP Skill 調適**:Claude 可透過 `skill_workbench` 查看、試跑、驗證並儲存複合工具的 Skill,管理台負責預覽與 ZIP 匯出。
 
 ---
 

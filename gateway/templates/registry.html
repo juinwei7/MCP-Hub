@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}MCP 目錄{% endblock %}
+{% block content %}
+<a class="back" href="/">← 回 Servers</a>
+<h1>MCP 目錄</h1>
+<p class="sub">常見 MCP server 參考清單。<b>不會自動安裝</b>——按「加入」只會建立一台<b>未設定</b>的下游,你再完成授權 / 填 token。</p>
+<p class="hint" style="margin:-14px 0 14px">⚠️ 遠端 OAuth 只有「支援自動註冊(DCR)」的服務可直接授權(如 Sentry / Linear / Notion);Google(Gmail / Calendar)、GitHub 需自備 client 憑證,目前尚未支援。</p>
+{% if msg %}<div class="note ok">{{ msg }}</div>{% endif %}
+<input id="filter" placeholder="搜尋名稱 / 說明…" style="margin-bottom:14px">
+<div class="card">
+{% for e in entries %}
+  <div class="list-row reg-row" data-text="{{ e.name }} {{ e.descr }} {{ e.kind }}">
+    <div class="main">
+      <div class="title">
+        {{ e.name }}
+        {% if e.kind == 'remote' %}<span class="chip">遠端</span>
+        {% elif e.kind == 'local' %}<span class="chip">本機</span>
+        {% else %}<span class="chip">參考</span>{% endif %}
+        {% if e.auth == 'oauth' %}<span class="chip">OAuth</span>
+        {% elif e.auth == 'token' %}<span class="chip">需 token</span>{% endif %}
+        {% if e.needs %}<span class="chip">需 {{ e.needs }}</span>{% endif %}
+      </div>
+      <div class="sub2">{{ e.descr }}</div>
+      {% if e.base_url %}<div class="url">{{ e.base_url }}</div>
+      {% elif e.command %}<div class="url">{{ e.command }} {{ e.args }}</div>{% endif %}
+    </div>
+    <div class="acts">
+      {% if e.kind != 'ref' and (e.base_url or e.command) %}
+      <form class="inline" method="post" action="/registry/{{ e.id }}/install"><button class="btn primary">加入</button></form>
+      {% elif e.doc_url %}
+      <a class="btn" href="{{ e.doc_url }}" target="_blank">說明 →</a>
+      {% endif %}
+      {% if not e.builtin %}
+      <form class="inline" method="post" action="/registry/{{ e.id }}/delete" onsubmit="return confirm('刪除目錄項「{{ e.name }}」?')"><button class="btn danger">刪</button></form>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="empty">目錄是空的。</div>
+{% endfor %}
+</div>
+
+<details style="margin-top:8px">
+  <summary class="btn" style="display:inline-block">+ 新增自訂目錄項</summary>
+  <div class="formcard" style="margin-top:10px">
+    <form method="post" action="/registry/add">
+      <label>名稱</label><input name="name" required placeholder="My Server">
+      <label>連線方式</label>
+      <select name="transport">
+        <option value="http">遠端 HTTP(貼 URL)</option>
+        <option value="stdio">本機 stdio(指令)</option>
+      </select>
+      <label>Base URL(遠端用)</label><input name="base_url" placeholder="https://…/mcp">
+      <label>指令 / 參數(本機用)</label>
+      <div style="display:flex;gap:8px">
+        <input name="command" placeholder="npx" style="flex:1">
+        <input name="args" placeholder='["-y","套件名"]' style="flex:2">
+      </div>
+      <label>授權</label>
+      <select name="auth">
+        <option value="none">無</option>
+        <option value="oauth">OAuth</option>
+        <option value="token">API token</option>
+      </select>
+      <label>需求註記(選填)</label><input name="needs" placeholder="Node.js / 連線字串…">
+      <label>說明連結(選填)</label><input name="doc_url" placeholder="https://…">
+      <label>說明</label><input name="descr" placeholder="這個 server 做什麼">
+      <div class="actions"><button class="btn primary">加入目錄</button></div>
+    </form>
+  </div>
+</details>
+{% endblock %}
+{% block scripts %}
+<script>(function(){var f=document.getElementById('filter'),rows=[].slice.call(document.querySelectorAll('.reg-row'));
+f.addEventListener('input',function(){var q=f.value.toLowerCase();
+rows.forEach(function(r){r.style.display=r.getAttribute('data-text').toLowerCase().indexOf(q)>=0?'':'none';});});})();</script>
+{% endblock %}

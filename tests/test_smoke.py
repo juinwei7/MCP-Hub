@@ -20,9 +20,9 @@ os.remove(_TMP_KEY)   # 讓 crypto 自己產生
 os.environ["MCP_HUB_DB"] = _TMP_DB
 os.environ["MCP_HUB_KEY"] = _TMP_KEY
 
-from gateway import store, web, crypto  # noqa: E402
+from gateway import store, web, crypto, skills  # noqa: E402
 from gateway.web import (  # noqa: E402
-    _entry_to_server, _extract_mcp_servers, _parse_tool_form,
+    _entry_to_server, _extract_mcp_servers, _parse_tool_form, _parse_composite_form,
 )
 from fastapi.testclient import TestClient  # noqa: E402
 from starlette.routing import Route  # noqa: E402
@@ -74,6 +74,16 @@ class TestStore(unittest.TestCase):
         store.delete_custom_tool("my_api")
         self.assertIsNone(store.get_custom_tool("my_api"))
 
+    def test_composite_tool_crud(self):
+        store.upsert_composite_tool(
+            "weekly_report", "週報", '[{"name":"week"}]',
+            '[{"id":"digest","tool":"demo__digest","args":{"week":"{{input.week}}"}}]', "collect", "報表")
+        self.assertIsNotNone(store.get_composite_tool("weekly_report"))
+        store.set_composite_tool_flag("weekly_report", needs_confirm=True)
+        self.assertTrue(store.get_composite_tool("weekly_report")["needs_confirm"])
+        store.delete_composite_tool("weekly_report")
+        self.assertIsNone(store.get_composite_tool("weekly_report"))
+
     def test_logs(self):
         before = len(store.list_logs(500))
         store.log_call("smoke", "some_tool", {"a": 1}, "ok", duration_ms=12)
@@ -86,6 +96,13 @@ class TestStore(unittest.TestCase):
         named, _uncat = store.category_overview()   # 回傳 (具名分類, 未分類)
         self.assertIn("測試類", [c["name"] for c in named])
         store.delete_category("測試類")
+
+    def test_skill_draft(self):
+        store.upsert_composite_tool("draft_source", "測試", "[]", '[{"id":"x","tool":"a__b","args":{}}]')
+        store.save_skill_draft("draft_source", "---\nname: draft-source\ndescription: test\n---\n", "purpose")
+        self.assertEqual(store.get_skill_draft("draft_source")["purpose"], "purpose")
+        store.delete_composite_tool("draft_source")
+        self.assertIsNone(store.get_skill_draft("draft_source"))
 
 
 class TestCrypto(unittest.TestCase):
@@ -156,6 +173,57 @@ class TestParsers(unittest.TestCase):
         with self.assertRaises(ValueError):
             _parse_tool_form("n", "d", "GET", "http://x", "{}", '[{"noname":1}]')
 
+    def test_parse_composite_form(self):
+        p, s = _parse_composite_form(
+            '[{"name":"week","type":"string"}]',
+            '[{"id":"digest","tool":"orgpulse__get_my_weekly_digest","args":{"week":"{{input.week}}"}}]',
+            "collect",
+        )
+        self.assertIn("week", p)
+        self.assertIn("digest", s)
+        with self.assertRaises(ValueError):
+            _parse_composite_form("{}", "[]", "collect")
+        with self.assertRaises(ValueError):
+            _parse_composite_form("[]", '[{"tool":"x"}]', "collect")
+
+    def test_skill_package(self):
+        import io
+        import zipfile
+        tool = {
+            "name": "weekly_report",
+            "description": "產生週報",
+            "params": [{"name": "week", "type": "string", "required": False, "description": "週次"}],
+        }
+        markdown = skills.starter_skill(tool)
+        self.assertIn("name: weekly-report", markdown)
+        skills.validate_skill_markdown(markdown, "weekly-report")
+        with zipfile.ZipFile(io.BytesIO(skills.skill_zip(tool["name"], markdown))) as archive:
+            self.assertEqual(archive.namelist(), ["weekly-report/SKILL.md"])
+            self.assertEqual(archive.read("weekly-report/SKILL.md").decode(), markdown)
+
+
+class TestSkillWorkbench(unittest.IsolatedAsyncioTestCase):
+    async def test_inspect_validate_and_save(self):
+        store.upsert_composite_tool(
+            "tune_report", "整理報告", "[]",
+            '[{"id":"data","tool":"demo__read","args":{}}]', "collect", "測試")
+
+        async def no_run(_name, _arguments):
+            return []
+
+        inspected = await skills.execute_workbench(
+            {"action": "inspect", "composite_name": "tune_report"}, no_run)
+        self.assertIn('"required_skill_name": "tune-report"', inspected)
+        markdown = "---\nname: tune-report\ndescription: 使用者需要整理報告時使用\n---\n\n# Workflow\n"
+        validated = await skills.execute_workbench(
+            {"action": "validate", "composite_name": "tune_report", "skill_md": markdown}, no_run)
+        self.assertIn('"ok": true', validated)
+        saved = await skills.execute_workbench(
+            {"action": "save", "composite_name": "tune_report", "skill_md": markdown}, no_run)
+        self.assertIn('"ok": true', saved)
+        self.assertEqual(store.get_skill_draft("tune_report")["skill_md"], markdown)
+        store.delete_composite_tool("tune_report")
+
 
 class TestWebPages(unittest.TestCase):
     @classmethod
@@ -165,16 +233,21 @@ class TestWebPages(unittest.TestCase):
         store.add_server("pagesrv", "Page Srv", "http://127.0.0.1:1/mcp", "none")
         store.cache_tools("pagesrv", [("t1", "工具一", {"type": "object"})])
         store.create_category("頁面類")
+        store.upsert_composite_tool(
+            "page_report", "頁面測試複合工具", "[]",
+            '[{"id":"digest","tool":"pagesrv__t1","args":{}}]', "collect", "測試")
 
     @classmethod
     def tearDownClass(cls):
         store.delete_server("pagesrv")
         store.delete_category("頁面類")
+        store.delete_composite_tool("page_report")
         cls.client.__exit__(None, None, None)
 
     def test_pages_return_200(self):
-        for path in ["/", "/servers/add", "/tools", "/tools/add", "/import",
-                     "/directory", "/catalog", "/connect", "/logs",
+        for path in ["/", "/servers/add", "/tools", "/tools/add", "/composites", "/composites/add",
+                     "/composites/page_report", "/composites/page_report/skill", "/import",
+                     "/directory", "/registry", "/connect", "/logs", "/guide",
                      "/servers/pagesrv", "/category?name=" + "頁面類"]:
             with self.subTest(path=path):
                 r = self.client.get(path)

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}上手指南{% endblock %}
+{% block styles %}
+.mm{background:#0f1720;color:#d6e2ec;border-radius:12px;padding:18px 20px;
+  font-family:var(--mono);font-size:13px;line-height:1.8;white-space:pre;overflow-x:auto;}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;}
+.steps>li{counter-increment:s;position:relative;padding:0 0 18px 40px;}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:26px;height:26px;
+  border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:13px;
+  display:flex;align-items:center;justify-content:center;}
+.steps>li:not(:last-child)::after{content:"";position:absolute;left:12px;top:28px;bottom:2px;
+  width:2px;background:var(--line);}
+.steps .t{font-weight:700;font-size:15px;margin-bottom:3px;}
+.steps .d{font-size:13.5px;color:var(--slate);}
+.cmd{display:flex;gap:8px;align-items:stretch;margin-top:8px;}
+.cmd pre{flex:1;margin:0;}
+.gtable td:first-child{font-weight:700;white-space:nowrap;color:var(--ink);}
+.gtable td{vertical-align:top;}
+h3{margin:26px 0 8px;}
+{% endblock %}
+{% block content %}
+<h1>📖 上手指南</h1>
+<p class="sub">五分鐘搞懂這套 Hub 在做什麼、怎麼開始。</p>
+
+<h3>這是什麼</h3>
+<div class="card">
+  <p style="margin:2px 0 14px">Claude 只連 <b>一個</b> Hub;你要用的各種工具都掛在 Hub 後面,由 Hub 幫你合併、整理、記錄。</p>
+  <div class="mm">Claude ──► 🧩 MCP Hub ──┬──► 下游 MCP(別人寫的,如 orgpulse / git)
+                        ├──► 自訂工具(你把一支 HTTP API 包成工具)
+                        └──► 複合工具(把多步查詢包成「一個」工具)</div>
+  <p class="hint" style="margin-top:12px">好處:接一次(Hub),之後加減工具都在這個管理台,不用一直改 Claude 設定。</p>
+</div>
+
+<h3>5 分鐘上手</h3>
+<div class="card">
+  <ol class="steps">
+    <li>
+      <div class="t">啟動管理台</div>
+      <div class="d">在專案目錄執行 <code>./start.sh</code>(或 <code>python -m gateway.web</code>),打開 <a href="/">http://localhost:8765</a>。你現在就在這裡。</div>
+    </li>
+    <li>
+      <div class="t">把 Hub 接進 Claude Code</div>
+      <div class="d">複製這行執行一次,之後<b>重開 Claude Code</b> 才會載入:</div>
+      <div class="cmd">
+        <pre id="cmd">claude mcp add my-hub -e PYTHONPATH="{{ proj }}" -- "{{ py }}" -m gateway.hub_server</pre>
+        <button class="btn" type="button" id="copy" style="flex:none">複製</button>
+      </div>
+    </li>
+    <li>
+      <div class="t">加一台下游工具</div>
+      <div class="d">回 <a href="/">Servers</a> →「+ 新增下游」貼上 MCP 設定 JSON(遠端 URL 或本機 stdio 皆可)。</div>
+    </li>
+    <li>
+      <div class="t">回 Claude 直接問</div>
+      <div class="d">你加的下游工具會以 <code>下游名__工具名</code> 自動出現在 Claude,直接用自然語言叫用即可,呼叫記錄看 <a href="/logs">Logs</a>。</div>
+    </li>
+  </ol>
+</div>
+
+<h3>名詞速查</h3>
+<div class="card">
+  <table class="gtable">
+    <tr><td>下游</td><td>別人寫好的 MCP server,你把它接進 Hub(遠端 http 或本機 stdio)。</td></tr>
+    <tr><td>自訂工具</td><td>沒有現成 MCP 時,把一支 HTTP API 填一填就包成工具。</td></tr>
+    <tr><td>複合工具</td><td>把「要跑好幾步」的查詢包成<b>一個</b>工具,Claude 叫一次就好。</td></tr>
+    <tr><td>Skill</td><td>教 Claude「什麼情境該用哪個工具、怎麼呈現」的劇本;用複合工具頁的調適台產出。</td></tr>
+    <tr><td>需確認</td><td>把危險工具標記後,Claude 呼叫前會先問你(對話內彈窗或核准頁)。</td></tr>
+  </table>
+</div>
+
+<h3>我想做… → 去哪</h3>
+<div class="card">
+  <table class="gtable">
+    <tr><td>接一個現成 MCP</td><td>翻 <a href="/registry">MCP 目錄</a> 選一個加入,或 <a href="/servers/add">新增下游</a> 貼 JSON</td></tr>
+    <tr><td>把公司 API 變工具</td><td><a href="/tools/add">自訂工具</a>,或從 <a href="/import">OpenAPI 匯入</a></td></tr>
+    <tr><td>每天出週報之類</td><td><a href="/composites">複合工具</a>:把多步查詢包成一個工具 + 產 Skill</td></tr>
+    <tr><td>看剛剛呼叫了什麼</td><td><a href="/logs">Logs</a>:分頁 / 篩選 / 只看錯誤</td></tr>
+    <tr><td>接入指令再看一次</td><td><a href="/connect">接入</a></td></tr>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>(function(){
+var b=document.getElementById('copy');if(!b)return;
+b.addEventListener('click',function(){
+  var t=document.getElementById('cmd').textContent;
+  navigator.clipboard.writeText(t).then(function(){
+    var o=b.textContent;b.textContent='已複製';setTimeout(function(){b.textContent=o;},1500);});
+});
+})();</script>
+{% endblock %}

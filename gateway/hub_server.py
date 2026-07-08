@@ -9,7 +9,6 @@ Claude 看到的工具 = 兩種來源合併:
 任何工具都可被標記 needs_confirm → 走票券核准流程,核准後才真的執行。
 """
 
-import time
 import json
 import asyncio
 
@@ -18,26 +17,13 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-from gateway import hub, store, custom, pool
+from gateway import store, custom, composite, skills
 from gateway.config import BASE_URL
+from gateway.dispatch import execute_named_tool, text_block
 
 SEP = "__"
 
 server = Server("mcp-hub")
-
-
-# ── 小工具 ────────────────────────────────────────────────
-def _result_to_texts(result):
-    return [b.text for b in result.content if getattr(b, "type", None) == "text"]
-
-
-def _texts_to_blocks(texts):
-    blocks = [types.TextContent(type="text", text=t) for t in (texts or [])]
-    return blocks or [types.TextContent(type="text", text="(沒有回傳內容)")]
-
-
-def _text(s):
-    return [types.TextContent(type="text", text=s)]
 
 
 _CHECK_ACTION_TOOL = types.Tool(
@@ -47,6 +33,22 @@ _CHECK_ACTION_TOOL = types.Tool(
         "type": "object",
         "properties": {"action_id": {"type": "string", "description": "待確認操作的票券 id"}},
         "required": ["action_id"],
+    },
+)
+
+_SKILL_WORKBENCH_TOOL = types.Tool(
+    name="skill_workbench",
+    description="調適複合工具的 Skill。可查看定義、試跑、驗證並儲存 SKILL.md；使用者要求建立或調整 Skill 時使用。",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["list", "inspect", "preview", "validate", "save"]},
+            "composite_name": {"type": "string", "description": "複合工具名稱；list 不需要"},
+            "arguments": {"type": "object", "description": "preview 試跑時傳給複合工具的參數"},
+            "purpose": {"type": "string", "description": "Skill 的用途與預期產出"},
+            "skill_md": {"type": "string", "description": "validate/save 使用的完整 SKILL.md"},
+        },
+        "required": ["action"],
     },
 )
 
@@ -61,6 +63,7 @@ async def list_tools() -> list[types.Tool]:
     for srv in store.enabled_servers():
         slug = srv["slug"]
         try:
+            from gateway import pool
             tools = await pool.fetch_tools(srv)
         except Exception:
             continue
@@ -93,46 +96,27 @@ async def list_tools() -> list[types.Tool]:
             inputSchema=custom.build_schema(c["params"]),
         ))
 
+    # C. 複合工具
+    for c in store.enabled_composite_tools():
+        hint = " ⚠️需人工確認" if c["needs_confirm"] else ""
+        if c["needs_confirm"]:
+            any_confirm = True
+        out.append(types.Tool(
+            name=c["name"],
+            description=f"{c['description'] or ''}{hint}",
+            inputSchema=composite.build_schema(c["params"]),
+        ))
+
     # 只有真的有工具需要確認時,才暴露 check_action(否則它只是噪音)
+    out.append(_SKILL_WORKBENCH_TOOL)
     if any_confirm:
         out.append(_CHECK_ACTION_TOOL)
     return out
 
-
-async def _forward(slug, tool, arguments):
-    """轉發給下游 MCP,並記 log。"""
-    srv = store.get_server(slug)
-    start = time.perf_counter()
-    try:
-        result = await pool.call_tool(srv, tool, arguments)
-        store.log_call(slug, tool, arguments, "ok", int((time.perf_counter() - start) * 1000))
-        return _texts_to_blocks(_result_to_texts(result))
-    except Exception as e:
-        store.log_call(slug, tool, arguments, "error", int((time.perf_counter() - start) * 1000), str(e))
-        return _text(f"❌ 呼叫下游失敗:{e}")
-
-
-async def _dispatch(name, arguments):
-    """實際執行(不含確認判斷):自訂工具 → 打 API;否則 → 轉發下游。"""
-    c = store.get_custom_tool(name)
-    if c:
-        start = time.perf_counter()
-        try:
-            text = await custom.execute(c, arguments)
-            store.log_call("(custom)", name, arguments, "ok", int((time.perf_counter() - start) * 1000))
-            return _text(text)
-        except Exception as e:
-            store.log_call("(custom)", name, arguments, "error", int((time.perf_counter() - start) * 1000), str(e))
-            return _text(f"❌ 自訂工具執行失敗:{e}")
-
-    slug, _, tool = name.partition(SEP)
-    srv = store.get_server(slug)
-    if srv is None or not srv["enabled"]:
-        return _text(f"❌ 未知或已停用的工具:{name}")
-    return await _forward(slug, tool, arguments)
-
-
 def _needs_confirm(name):
+    comp = store.get_composite_tool(name)
+    if comp:
+        return bool(comp["needs_confirm"])
     c = store.get_custom_tool(name)
     if c:
         return bool(c["needs_confirm"])
@@ -145,20 +129,20 @@ async def _resume(action_id):
     """核准後取結果;APPROVED 才真的執行,EXECUTED 後冪等。"""
     a = store.get_action(action_id)
     if a is None:
-        return _text(f"❌ 找不到票券 {action_id}")
+        return text_block(f"❌ 找不到票券 {action_id}")
     st = a["status"]
     if st == store.WAITING:
-        return _text(f"⏳ 票券 {action_id} 還在等你在核准頁確認。核准後再呼叫我一次。")
+        return text_block(f"⏳ 票券 {action_id} 還在等你在核准頁確認。核准後再呼叫我一次。")
     if st == store.REJECTED:
-        return _text(f"🚫 你已拒絕票券 {action_id}(操作沒有執行)。")
+        return text_block(f"🚫 你已拒絕票券 {action_id}(操作沒有執行)。")
     if st == store.EXECUTED:
-        return _texts_to_blocks(a["result"])
+        return [types.TextContent(type="text", text=t) for t in a["result"]]
     if st == store.APPROVED:
-        blocks = await _dispatch(a["tool"], a["arguments"])
+        blocks = await execute_named_tool(a["tool"], a["arguments"])
         store.save_result(action_id, [b.text for b in blocks])
         store.log_call("(approved)", a["tool"], a["arguments"], "executed_after_approval")
         return blocks
-    return _text(f"❓ 票券 {action_id} 狀態異常:{st}")
+    return text_block(f"❓ 票券 {action_id} 狀態異常:{st}")
 
 
 _CONFIRM_SCHEMA = {
@@ -198,9 +182,9 @@ async def _try_elicit_confirm(name, arguments):
     approved = result.action == "accept" and (result.content or {}).get("decision") == "approve"
     if approved:
         store.log_call("(confirm)", name, arguments, "elicit_approved")
-        return await _dispatch(name, arguments)
+        return await execute_named_tool(name, arguments)
     store.log_call("(confirm)", name, arguments, "elicit_rejected")
-    return _text("🚫 你拒絕了這個操作(未執行)。")
+    return text_block("🚫 你拒絕了這個操作(未執行)。")
 
 
 @server.call_tool()
@@ -210,6 +194,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
     if name == "check_action":
         return await _resume(arguments.get("action_id"))
+    if name == "skill_workbench":
+        return text_block(await skills.execute_workbench(arguments, execute_named_tool))
 
     if _needs_confirm(name):
         # 優先:對話內彈窗確認(client 支援 elicitation 時)
@@ -219,19 +205,20 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         # 退回:票券 + 核准頁流程
         action_id = store.create_action(name, arguments)
         store.log_call("(confirm)", name, arguments, "blocked_need_confirm")
-        return _text(
+        return text_block(
             f"⚠️ 「{name}」被設為需人工確認,已建立待確認票券。\n"
             f"請開啟核准頁:{BASE_URL}/a/{action_id}\n"
             f"核准後,呼叫 check_action(action_id=\"{action_id}\") 取得結果。"
         )
 
-    return await _dispatch(name, arguments)
+    return await execute_named_tool(name, arguments)
 
 
 async def main():
     store.init_db()
     # 起連線池 worker,再跑 MCP server;兩者在同一個 task group 內
     async with anyio.create_task_group() as tg:
+        from gateway import pool
         pool.bind(tg)  # 連線 task 都跑在這個 group 裡
         async with stdio_server() as (read, write):
             await server.run(read, write, server.create_initialization_options())

@@ -16,18 +16,18 @@ import sys
 import json
 import asyncio
 import subprocess
-import shutil
 import html as _h
 import urllib.parse as _u
 from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from gateway import store, hub, auth, custom, openapi, directory
+from gateway import store, hub, auth, custom, openapi, directory, composite, skills
 from gateway.config import HOST, PORT, HEALTH_INTERVAL
+from gateway.dispatch import blocks_to_texts, execute_named_tool
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -56,6 +56,20 @@ async def lifespan(app):
 
 
 app = FastAPI(title="MCP Hub 管理台", lifespan=lifespan)
+
+
+def _tool_name_conflict(name, *, allow_existing=None):
+    if name in {"check_action", "skill_workbench"}:
+        return f"工具名稱不能使用保留字 {name}"
+    if "__" in name:
+        return "工具名稱不能包含 __，避免與下游 slug__tool 命名空間衝突"
+    existing = store.get_custom_tool(name) or store.get_composite_tool(name)
+    if existing and name != allow_existing:
+        return f"名稱 {name} 已存在"
+    for s in store.list_servers():
+        if store.get_tool(s["slug"], name):
+            return f"名稱 {name} 與既有下游工具衝突"
+    return ""
 
 
 # ── Servers 清單 ──────────────────────────────────────────
@@ -255,84 +269,6 @@ def import_claude():
     return RedirectResponse("/?msg=" + _u.quote(msg), status_code=303)
 
 
-# ── 精選 server 目錄(一鍵 pip 裝好 + 接上) ──────────────────
-_HOME = str(Path.home())
-_CATALOG = [
-    # Python:pip 裝進本 venv,用 `python -m 模組` 啟動(zero-config)
-    {"id": "time", "name": "Time", "runtime": "python",
-     "pip": "mcp-server-time", "module": "mcp_server_time", "args": [],
-     "tags": ["官方", "時間"], "desc": "時間查詢與時區轉換。"},
-    {"id": "fetch", "name": "Fetch", "runtime": "python",
-     "pip": "mcp-server-fetch", "module": "mcp_server_fetch", "args": [],
-     "tags": ["官方", "網頁"], "desc": "抓取網頁內容轉成 markdown 給 AI。"},
-    {"id": "git", "name": "Git", "runtime": "python",
-     "pip": "mcp-server-git", "module": "mcp_server_git", "args": [],
-     "tags": ["官方", "版控"], "desc": "讀取 / 操作本機 git repo。"},
-    # Node:用 `npx -y 套件` 執行,需本機有 Node.js;不會裝進 venv
-    {"id": "filesystem", "name": "Filesystem", "runtime": "node",
-     "npm": "@modelcontextprotocol/server-filesystem", "args": [_HOME],
-     "tags": ["官方", "檔案"], "desc": f"讀寫本機檔案(預設範圍:{_HOME})。"},
-    {"id": "memory", "name": "Memory", "runtime": "node",
-     "npm": "@modelcontextprotocol/server-memory", "args": [],
-     "tags": ["官方", "記憶"], "desc": "給 AI 知識圖譜式的長期記憶。"},
-    {"id": "sequential-thinking", "name": "Sequential Thinking", "runtime": "node",
-     "npm": "@modelcontextprotocol/server-sequential-thinking", "args": [],
-     "tags": ["官方", "推理"], "desc": "讓 AI 一步步結構化拆解問題。"},
-    {"id": "everything", "name": "Everything(測試用)", "runtime": "node",
-     "npm": "@modelcontextprotocol/server-everything", "args": [],
-     "tags": ["官方", "測試"], "desc": "官方測試 server,含各種範例工具,適合驗證 Hub。"},
-]
-
-
-@app.get("/catalog", response_class=HTMLResponse)
-def catalog(request: Request, msg: str = ""):
-    existing = {s["slug"] for s in store.list_servers()}
-    node_ok = shutil.which("npx") is not None
-    items = [{**p, "added": store.slugify(p["id"]) in existing,
-              # Node 版但本機沒 npx → 無法一鍵,標記擋住
-              "blocked": p["runtime"] == "node" and not node_ok} for p in _CATALOG]
-    return templates.TemplateResponse(request, "catalog.html",
-                                      {"active": "servers", "items": items, "node_ok": node_ok, "msg": msg})
-
-
-@app.post("/catalog/add")
-async def catalog_add(id: str = Form("")):
-    preset = next((p for p in _CATALOG if p["id"] == id), None)
-    if not preset:
-        return RedirectResponse("/catalog", status_code=303)
-    slug = store.slugify(preset["id"])
-    extra = preset.get("args", [])
-    if preset["runtime"] == "python":
-        # 一鍵:先 pip 裝進本 venv(若尚未裝)
-        if preset.get("pip"):
-            try:
-                subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", preset["pip"]],
-                               timeout=180, check=True, capture_output=True)
-            except Exception as e:
-                return RedirectResponse("/catalog?msg=" + _u.quote(f"安裝 {preset['pip']} 失敗:{e}"), status_code=303)
-        command, args = sys.executable, ["-m", preset["module"]] + extra
-    else:  # node:用 npx 執行,需本機有 Node
-        npx = shutil.which("npx")
-        if not npx:
-            return RedirectResponse("/catalog?msg=" + _u.quote(
-                f"「{preset['name']}」需要 Node.js(npx),請先安裝 Node 再試"), status_code=303)
-        command, args = npx, ["-y", preset["npm"]] + extra
-    if not store.get_server(slug):
-        store.add_server(slug, preset["name"], "", "none", None, "stdio",
-                         command, json.dumps(args, ensure_ascii=False), "{}")
-    # 裝完連線測一下
-    srv = store.get_server(slug)
-    try:
-        tools = await hub.fetch_tools(srv)
-        store.cache_tools(slug, [(t.name, t.description, t.inputSchema) for t in tools])
-        store.set_server_status(slug, "ok", f"{len(tools)} 個工具")
-        msg = f"已安裝並接上「{preset['name']}」({len(tools)} 個工具)"
-    except Exception as e:
-        store.set_server_status(slug, "error", str(e)[:200])
-        msg = f"已加入「{preset['name']}」,但連線失敗:{e}"
-    return RedirectResponse("/?msg=" + _u.quote(msg), status_code=303)
-
-
 @app.get("/config/export")
 def export_servers():
     """把目前的下游匯出成標準 mcpServers JSON(可攜、可再匯入)。"""
@@ -358,6 +294,53 @@ def export_servers():
     body = json.dumps(payload, ensure_ascii=False, indent=2)
     return Response(content=body, media_type="application/json",
                     headers={"Content-Disposition": "attachment; filename=mcp-hub-servers.json"})
+
+
+# ── MCP 參考目錄(列表 + 一鍵建立未設定的下游,不自動安裝) ──────────
+@app.get("/registry", response_class=HTMLResponse)
+def registry(request: Request, msg: str = ""):
+    return templates.TemplateResponse(request, "registry.html",
+                                      {"active": "servers", "entries": store.list_directory_entries(), "msg": msg})
+
+
+@app.post("/registry/add")
+def registry_add(id: str = Form(""), name: str = Form(...), transport: str = Form("http"),
+                 base_url: str = Form(""), command: str = Form(""), args: str = Form("[]"),
+                 auth: str = Form("none"), needs: str = Form(""), doc_url: str = Form(""),
+                 descr: str = Form("")):
+    try:
+        a = json.loads(args) if args.strip() else []
+        args_json = json.dumps(a if isinstance(a, list) else [], ensure_ascii=False)
+    except Exception:
+        args_json = "[]"
+    kind = "remote" if transport == "http" else "local"
+    store.add_directory_entry(store.slugify(id or name), name, kind, transport,
+                              base_url.strip(), command.strip(), args_json,
+                              auth, needs.strip(), doc_url.strip(), descr.strip())
+    return RedirectResponse("/registry?msg=" + _u.quote(f"已加入目錄項「{name}」"), status_code=303)
+
+
+@app.post("/registry/{entry_id}/delete")
+def registry_delete(entry_id: str):
+    store.delete_directory_entry(entry_id)
+    return RedirectResponse("/registry", status_code=303)
+
+
+@app.post("/registry/{entry_id}/install")
+def registry_install(entry_id: str):
+    e = store.get_directory_entry(entry_id)
+    if not e or e["kind"] == "ref" or not (e["base_url"] or e["command"]):
+        return RedirectResponse("/registry", status_code=303)
+    slug, existing, i = store.slugify(e["id"]), {s["slug"] for s in store.list_servers()}, 2
+    base = slug
+    while slug in existing:
+        slug = f"{base}_{i}"; i += 1
+    auth_type = {"oauth": "oauth", "token": "bearer"}.get(e["auth"], "none")
+    store.add_server(slug, e["name"], e["base_url"] or "", auth_type, None,
+                     e["transport"], e["command"] or "", e["args"] or "[]", "{}")
+    nxt = {"oauth": "已加入,請到下方按「OAuth 授權」完成登入。",
+           "bearer": "已加入,請按「編輯」填入 API token。"}.get(auth_type, "已加入,可按「重新整理工具」測試連線。")
+    return RedirectResponse(f"/servers/{slug}?msg=" + _u.quote(nxt), status_code=303)
 
 
 @app.post("/servers/{slug}/toggle")
@@ -516,22 +499,41 @@ async def oauth_start(request: Request, slug: str):
     provider = auth.provider_for(srv, flow.redirect_handler, flow.callback_handler)
 
     # 背景觸發授權握手:provider 會呼叫 redirect_handler 給我們授權網址,並等 callback
+    err_box = {}
+
     async def run():
         try:
             async with hub._http_session(srv["base_url"], auth=provider) as s:
                 await s.list_tools()
-        except Exception:
-            pass
+        except Exception as e:
+            err_box["err"] = e
 
-    asyncio.create_task(run())
-    try:
-        auth_url = await asyncio.wait_for(flow.auth_url, timeout=15)
-    except Exception:
-        return templates.TemplateResponse(request, "message.html", {
-            "active": "servers", "heading": "無法開始授權",
-            "message": "這台下游可能不支援 OAuth,或連線逾時。(OAuth 互動流程需真實服務才能完成——目前為骨架)",
-            "back_href": f"/servers/{slug}", "back_label": "← 返回"})
-    return RedirectResponse(auth_url, status_code=303)
+    task = asyncio.create_task(run())
+    # 等「拿到授權網址」或「背景任務先失敗」,誰先到算誰
+    url_fut = asyncio.ensure_future(flow.auth_url)
+    await asyncio.wait({url_fut, task}, timeout=15, return_when=asyncio.FIRST_COMPLETED)
+    if url_fut.done() and not url_fut.cancelled() and url_fut.exception() is None:
+        return RedirectResponse(url_fut.result(), status_code=303)
+
+    url_fut.cancel()
+    return templates.TemplateResponse(request, "message.html", {
+        "active": "servers", "heading": "無法開始授權",
+        "message": _oauth_error_hint(err_box.get("err")),
+        "back_href": f"/servers/{slug}", "back_label": "← 返回"})
+
+
+def _oauth_error_hint(err):
+    """把 OAuth 失敗轉成看得懂的原因。"""
+    s = str(err or "")
+    if "Registration failed" in s or "registration" in s.lower():
+        return ("這台服務不支援「自動註冊(Dynamic Client Registration)」——它要求你先自行註冊一個 "
+                "OAuth client 並提供 client_id / secret。Google(Gmail / Calendar)、GitHub 多屬此類,"
+                "本 Hub 目前只支援「支援自動註冊」的服務(如 Sentry / Linear / Notion 等)。")
+    return ("沒能取得授權網址。最常見原因:這台服務不支援「自動註冊(Dynamic Client Registration)」——"
+            "需你先自行註冊 OAuth client 並提供 client_id / secret(Google、GitHub 屬此類,本 Hub 尚未支援)。"
+            "本 Hub 目前只支援「支援自動註冊」的服務(如 Sentry / Linear / Notion)。"
+            "少數情況是 URL 錯誤或該服務不支援 OAuth。"
+            + (f"(技術細節:{s})" if s else ""))
 
 
 @app.get("/oauth/callback", response_class=HTMLResponse)
@@ -545,6 +547,222 @@ def oauth_callback(request: Request, code: str = "", state: str = ""):
 # ── 自訂工具(把 HTTP API 包成 MCP 工具) ────────────────────
 _PARAMS_EG = '[{"name":"city","type":"string","required":true,"description":"城市名"}]'
 _HEADERS_EG = '{"Authorization": "Bearer YOUR_KEY"}'
+_STEPS_EG = '[{"id":"digest","tool":"orgpulse__get_my_weekly_digest","args":{}},{"id":"commits","tool":"orgpulse__get_my_commits","args":{}}]'
+
+
+def _schema_to_params(schema):
+    schema = schema or {}
+    props = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    params = []
+    for name, spec in props.items():
+        params.append({
+            "name": name,
+            "type": spec.get("type", "string"),
+            "required": name in required,
+            "description": spec.get("description", ""),
+        })
+    return params
+
+
+def _available_step_tools():
+    tools = []
+    for srv in store.enabled_servers():
+        slug = srv["slug"]
+        for t in store.list_cached_tools(slug):
+            if not t["enabled"]:
+                continue
+            tools.append({
+                "name": f"{slug}__{t['name']}",
+                "description": t.get("desc_override") or (t.get("description") or ""),
+                "params": _schema_to_params(json.loads(t.get("input_schema") or "{}")),
+                "kind": "downstream",
+            })
+    for t in store.enabled_custom_tools():
+        tools.append({
+            "name": t["name"],
+            "description": t.get("description") or "",
+            "params": t.get("params") or [],
+            "kind": "custom",
+        })
+    return sorted(tools, key=lambda t: t["name"].lower())
+
+
+def _composite_form_ctx(t=None, error=""):
+    is_edit = t is not None
+    return {
+        "is_edit": is_edit,
+        "name": t["name"] if t else "",
+        "group": (t["group_name"] if t else ""),
+        "description": (t["description"] if t else ""),
+        "params_val": json.dumps(t["params"], ensure_ascii=False, indent=2) if (t and t["params"]) else "",
+        "params_init": json.dumps(t["params"], ensure_ascii=False) if (t and t["params"]) else "[]",
+        "steps_val": json.dumps(t["steps"], ensure_ascii=False, indent=2) if (t and t["steps"]) else "",
+        "steps_init": json.dumps(t["steps"], ensure_ascii=False) if (t and t["steps"]) else "[]",
+        "available_tools_json": json.dumps(_available_step_tools(), ensure_ascii=False),
+        "output": (t["output"] if t else "collect"),
+        "action": f"/composites/{t['name']}/save" if is_edit else "/composites/add",
+        "error": error,
+    }
+
+
+def _parse_composite_form(params, steps, output):
+    import json as _j
+    if (output or "collect") != "collect":
+        raise ValueError("目前只支援 collect output")
+    try:
+        params_obj = _j.loads(params) if params.strip() else []
+        assert isinstance(params_obj, list)
+        for p in params_obj:
+            assert "name" in p
+    except Exception:
+        raise ValueError("參數清單必須是合法的 JSON 陣列,每項要有 name,例如 " + _PARAMS_EG)
+    try:
+        steps_obj = _j.loads(steps) if steps.strip() else []
+        assert isinstance(steps_obj, list) and steps_obj
+        for s in steps_obj:
+            assert "id" in s and "tool" in s
+            assert isinstance(s.get("args", {}), dict)
+    except Exception:
+        raise ValueError("步驟必須是合法的 JSON 陣列,每項要有 id / tool / args,例如 " + _STEPS_EG)
+    return _j.dumps(params_obj, ensure_ascii=False), _j.dumps(steps_obj, ensure_ascii=False)
+
+
+@app.get("/composites", response_class=HTMLResponse)
+def composites_index(request: Request):
+    return templates.TemplateResponse(request, "composites.html", {
+        "active": "composites",
+        "tools": store.list_composite_tools(),
+    })
+
+
+@app.get("/composites/add", response_class=HTMLResponse)
+def composite_add_form(request: Request):
+    return templates.TemplateResponse(request, "composite_add.html", {"active": "composites", **_composite_form_ctx()})
+
+
+@app.post("/composites/add")
+def composite_add(
+    request: Request,
+    name: str = Form(...), description: str = Form(""), params: str = Form(""),
+    steps: str = Form(""), output: str = Form("collect"), group: str = Form(""),
+):
+    import re
+    name = name.strip()
+
+    def _err(msg):
+        return templates.TemplateResponse(request, "composite_add.html", {"active": "composites", **_composite_form_ctx(error=msg)})
+
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+        return _err("工具名稱只能用英數、底線、連字號")
+    conflict = _tool_name_conflict(name)
+    if conflict:
+        return _err(conflict)
+    try:
+        p, s = _parse_composite_form(params, steps, output)
+    except ValueError as e:
+        return _err(str(e))
+    store.upsert_composite_tool(name, description, p, s, output, group.strip())
+    return RedirectResponse(f"/composites/{name}", status_code=303)
+
+
+@app.get("/composites/{name}", response_class=HTMLResponse)
+def composite_detail(request: Request, name: str, msg: str = ""):
+    t = store.get_composite_tool(name)
+    if t is None:
+        return templates.TemplateResponse(request, "message.html", {
+            "active": "composites", "heading": f"找不到 {name}", "back_href": "/composites", "back_label": "← 回複合工具"})
+    ctx = {"active": "composites", "msg": msg, "enabled": t["enabled"], "needs_confirm": t["needs_confirm"]}
+    ctx.update(_composite_form_ctx(t))
+    return templates.TemplateResponse(request, "composite_detail.html", ctx)
+
+
+@app.post("/composites/{name}/save")
+def composite_save(
+    request: Request,
+    name: str, description: str = Form(""), params: str = Form(""),
+    steps: str = Form(""), output: str = Form("collect"), group: str = Form(""),
+):
+    try:
+        p, s = _parse_composite_form(params, steps, output)
+    except ValueError as e:
+        t = store.get_composite_tool(name)
+        ctx = {"active": "composites", "msg": "", "enabled": t["enabled"], "needs_confirm": t["needs_confirm"]}
+        ctx.update(_composite_form_ctx(t, error=str(e)))
+        return templates.TemplateResponse(request, "composite_detail.html", ctx)
+    store.upsert_composite_tool(name, description, p, s, output, group.strip())
+    return RedirectResponse(f"/composites/{name}?msg=已儲存", status_code=303)
+
+
+@app.post("/composites/{name}/delete")
+def composite_delete(name: str):
+    store.delete_composite_tool(name)
+    return RedirectResponse("/composites", status_code=303)
+
+
+@app.post("/composites/{name}/toggle_enabled")
+def composite_toggle_enabled(name: str):
+    t = store.get_composite_tool(name)
+    if t:
+        store.set_composite_tool_flag(name, enabled=not t["enabled"])
+    return RedirectResponse(f"/composites/{name}", status_code=303)
+
+
+@app.post("/composites/{name}/toggle_confirm")
+def composite_toggle_confirm(name: str):
+    t = store.get_composite_tool(name)
+    if t:
+        store.set_composite_tool_flag(name, needs_confirm=not t["needs_confirm"])
+    return RedirectResponse(f"/composites/{name}", status_code=303)
+
+
+@app.post("/composites/{name}/test", response_class=HTMLResponse)
+async def composite_test(request: Request, name: str, args: str = Form("")):
+    t = store.get_composite_tool(name)
+    if t is None:
+        return RedirectResponse("/composites", status_code=303)
+    try:
+        arguments = json.loads(args) if args.strip() else {}
+        result = "\n\n".join(blocks_to_texts(await execute_named_tool(name, arguments)))
+    except Exception as e:
+        result = f"❌ 錯誤:{e}"
+    return templates.TemplateResponse(request, "tool_test_result.html", {
+        "active": "composites", "name": name, "args": args or "{}", "result": result,
+        "back_href": f"/composites/{name}",
+    })
+
+
+@app.get("/composites/{name}/skill", response_class=HTMLResponse)
+def composite_skill(request: Request, name: str):
+    t = store.get_composite_tool(name)
+    if t is None:
+        return templates.TemplateResponse(request, "message.html", {
+            "active": "composites", "heading": f"找不到 {name}", "back_href": "/composites", "back_label": "← 回複合工具"})
+    saved = store.get_skill_draft(name)
+    return templates.TemplateResponse(request, "composite_skill.html", {
+        "active": "composites", "name": name, "purpose": (saved or {}).get("purpose") or t.get("description") or "",
+        "draft": (saved or {}).get("skill_md") or skills.starter_skill(t), "error": "",
+        "saved": bool(saved), "skill_name": skills.skill_name(name),
+    })
+
+
+@app.post("/composites/{name}/skill/download")
+def composite_skill_download(request: Request, name: str, draft: str = Form(...), purpose: str = Form("")):
+    t = store.get_composite_tool(name)
+    if t is None:
+        return RedirectResponse("/composites", status_code=303)
+    try:
+        content = skills.skill_zip(name, draft)
+    except ValueError as exc:
+        return templates.TemplateResponse(request, "composite_skill.html", {
+            "active": "composites", "name": name, "purpose": purpose,
+            "draft": draft, "error": f"無法匯出：{exc}", "saved": bool(store.get_skill_draft(name)),
+            "skill_name": skills.skill_name(name),
+        })
+    filename = skills.skill_name(name) + ".zip"
+    return Response(content, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    })
 
 
 def _form_ctx(t=None, error=""):
@@ -630,6 +848,9 @@ def tool_add(
 
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
         return _err("工具名稱只能用英數、底線、連字號")
+    conflict = _tool_name_conflict(name)
+    if conflict:
+        return _err(conflict)
     try:
         h, p = _parse_tool_form(name, description, method, url_template, headers, params)
     except ValueError as e:
@@ -767,6 +988,7 @@ async def tool_test(request: Request, name: str, args: str = Form("")):
         result = f"❌ 錯誤:{e}"
     return templates.TemplateResponse(request, "tool_test_result.html", {
         "active": "tools", "name": name, "args": args or "{}", "result": result,
+        "back_href": f"/tools/{name}",
     })
 
 
@@ -872,6 +1094,13 @@ def connect(request: Request):
     proj = str(Path(__file__).parent.parent)
     return templates.TemplateResponse(request, "connect.html",
                                       {"active": "connect", "py": sys.executable, "proj": proj})
+
+
+@app.get("/guide", response_class=HTMLResponse)
+def guide(request: Request):
+    proj = str(Path(__file__).parent.parent)
+    return templates.TemplateResponse(request, "guide.html",
+                                      {"active": "guide", "py": sys.executable, "proj": proj})
 
 
 # ── Logs ──────────────────────────────────────────────────

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ name }}{% endblock %}
+{% block content %}
+<a class="back" href="/composites">← 回複合工具</a>
+{% if msg %}<div class="note ok">{{ msg }}</div>{% endif %}
+<h1>{{ name }}</h1>
+<div style="display:flex;gap:10px;margin:0 0 18px;flex-wrap:wrap">
+  <form class="inline" method="post" action="/composites/{{ name }}/toggle_enabled"><button class="btn">{% if enabled %}停用{% else %}啟用{% endif %}</button></form>
+  <form class="inline" method="post" action="/composites/{{ name }}/toggle_confirm"><button class="btn">{% if needs_confirm %}取消需確認{% else %}設為需確認{% endif %}</button></form>
+  <a class="btn" href="/composites/{{ name }}/skill">用 Claude 調適 Skill</a>
+  <form class="inline" method="post" action="/composites/{{ name }}/delete" onsubmit="return confirm('確定刪除?')"><button class="btn danger">刪除</button></form>
+</div>
+{% include "_composite_form.html" %}
+<h3 style="margin-top:26px">測試執行</h3>
+<p class="hint">用 JSON 提供參數,直接在 Hub 內依序跑每一步(不經過 Claude)。</p>
+<form method="post" action="/composites/{{ name }}/test"><div class="formcard">
+  <label>參數(JSON)</label><textarea name="args" placeholder='{"week":"2026-W28"}'></textarea>
+  <div class="actions"><button class="btn primary" type="submit">執行測試</button></div>
+</div></form>
+{% endblock %}

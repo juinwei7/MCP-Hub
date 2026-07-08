@@ -1,11 +1,13 @@
 """
 SQLite 儲存 —— MCP Server 程序和管理台程序共用的那份狀態。
 
-四張表:
-  servers      下游 MCP 清單(你在管理台加的)
-  tools_cache  每台下游的工具快取(讓管理台不用連線就能顯示;含啟用/需確認開關)
-  call_logs    每一次轉發呼叫的紀錄
-  actions      v1 的核准票券(給「可選確認」用)
+主要表:
+  servers          下游 MCP 清單(你在管理台加的)
+  tools_cache      每台下游的工具快取(讓管理台不用連線就能顯示;含啟用/需確認開關)
+  custom_tools     Hub 自己的 HTTP 自訂工具
+  composite_tools  Hub 自己的複合工具(多步驟巨集)
+  call_logs        每一次轉發呼叫的紀錄
+  actions          v1 的核准票券(給「可選確認」用)
 """
 
 import sqlite3
@@ -143,15 +145,121 @@ def init_db():
             )
             """
         )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS composite_tools (
+                name          TEXT PRIMARY KEY,
+                description   TEXT,
+                params        TEXT DEFAULT '[]',
+                steps         TEXT DEFAULT '[]',
+                output        TEXT NOT NULL DEFAULT 'collect',
+                enabled       INTEGER NOT NULL DEFAULT 1,
+                needs_confirm INTEGER NOT NULL DEFAULT 0,
+                group_name    TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS skill_drafts (
+                composite_name TEXT PRIMARY KEY,
+                purpose        TEXT NOT NULL DEFAULT '',
+                skill_md       TEXT NOT NULL,
+                updated_at     TEXT NOT NULL
+            )
+            """
+        )
+        # 內嵌 AI 已由 MCP 調適模式取代；移除舊設定與加密 API key。
+        c.execute("DROP TABLE IF EXISTS ai_settings")
         # 遷移:舊 DB 補上 group_name 欄
         cols = [r["name"] for r in c.execute("PRAGMA table_info(custom_tools)").fetchall()]
         if "group_name" not in cols:
             c.execute("ALTER TABLE custom_tools ADD COLUMN group_name TEXT NOT NULL DEFAULT ''")
+        ccols = [r["name"] for r in c.execute("PRAGMA table_info(composite_tools)").fetchall()]
+        if "group_name" not in ccols:
+            c.execute("ALTER TABLE composite_tools ADD COLUMN group_name TEXT NOT NULL DEFAULT ''")
         # 分類表(讓「空分類」也能存在)。group_name 即分類名,'' = 未分類。
         c.execute(
             "CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY, created_at TEXT NOT NULL)"
         )
+        # MCP 參考目錄(不自動安裝,只列表 + 一鍵建立未設定的下游讓你完成授權)
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS directory_entries (
+                id        TEXT PRIMARY KEY,
+                name      TEXT NOT NULL,
+                kind      TEXT NOT NULL DEFAULT 'remote',   -- remote | local | ref
+                transport TEXT NOT NULL DEFAULT 'http',     -- http | stdio
+                base_url  TEXT DEFAULT '',
+                command   TEXT DEFAULT '',
+                args      TEXT DEFAULT '[]',                -- json
+                auth      TEXT DEFAULT 'none',              -- oauth | token | none
+                needs     TEXT DEFAULT '',                  -- 需求註記:Node.js / API token / 連線字串…
+                doc_url   TEXT DEFAULT '',
+                descr     TEXT DEFAULT '',
+                builtin   INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        for e in _DIRECTORY_SEED:
+            # builtin 項以程式為準:每次啟動 upsert,讓種子的修改會更新到既有 DB。
+            c.execute(
+                "INSERT INTO directory_entries "
+                "(id,name,kind,transport,base_url,command,args,auth,needs,doc_url,descr,builtin) "
+                "VALUES (:id,:name,:kind,:transport,:base_url,:command,:args,:auth,:needs,:doc_url,:descr,1) "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,kind=excluded.kind,transport=excluded.transport,"
+                "base_url=excluded.base_url,command=excluded.command,args=excluded.args,auth=excluded.auth,"
+                "needs=excluded.needs,doc_url=excluded.doc_url,descr=excluded.descr,builtin=1",
+                {"kind": "remote", "transport": "http", "base_url": "", "command": "",
+                 "args": "[]", "auth": "none", "needs": "", "doc_url": "", "descr": "", **e},
+            )
     _encrypt_existing_secrets()   # 一次性:把既有明文密鑰補加密(冪等,已加密的跳過)
+
+
+# 內建 MCP 目錄種子(URL/套件皆已驗證存在)。builtin 項每次啟動 INSERT OR IGNORE 補回。
+_DIRECTORY_SEED = [
+    # 遠端 hosted:貼 URL + OAuth 授權
+    {"id": "github", "name": "GitHub", "kind": "remote", "transport": "http",
+     "base_url": "https://api.githubcopilot.com/mcp/", "auth": "oauth",
+     "descr": "GitHub 官方遠端 MCP:issue / PR / repo。"},
+    {"id": "gitlab", "name": "GitLab", "kind": "remote", "transport": "http",
+     "base_url": "https://gitlab.com/api/v4/mcp", "auth": "oauth",
+     "descr": "GitLab 官方遠端 MCP。"},
+    {"id": "sentry", "name": "Sentry", "kind": "remote", "transport": "http",
+     "base_url": "https://mcp.sentry.dev/mcp", "auth": "oauth",
+     "descr": "Sentry 錯誤追蹤:查 issue / 事件。"},
+    {"id": "notion", "name": "Notion", "kind": "remote", "transport": "http",
+     "base_url": "https://mcp.notion.com/mcp", "auth": "oauth",
+     "descr": "Notion 頁面 / 資料庫。"},
+    {"id": "linear", "name": "Linear", "kind": "remote", "transport": "http",
+     "base_url": "https://mcp.linear.app/mcp", "auth": "oauth",
+     "descr": "Linear 議題追蹤。"},
+    # Google 家:只吃 OAuth 且不支援自動註冊(DCR)→ Hub 接不了,請用 Claude 內建連接器
+    {"id": "google-calendar", "name": "Google Calendar", "kind": "ref",
+     "base_url": "https://calendarmcp.googleapis.com/mcp/v1", "auth": "oauth", "needs": "Claude 連接器",
+     "descr": "Google 日曆。只支援 Google OAuth、不支援自動註冊 → 請用 Claude 內建連接器,Hub 不接。"},
+    {"id": "gmail", "name": "Gmail", "kind": "ref",
+     "base_url": "https://gmailmcp.googleapis.com/mcp/v1", "auth": "oauth", "needs": "Claude 連接器",
+     "descr": "Gmail 郵件。只支援 Google OAuth、不支援自動註冊 → 請用 Claude 內建連接器,Hub 不接。"},
+    # 本機 stdio:需 Node(npx)
+    {"id": "filesystem", "name": "Filesystem", "kind": "local", "transport": "stdio",
+     "command": "npx", "args": '["-y","@modelcontextprotocol/server-filesystem","."]',
+     "auth": "none", "needs": "Node.js",
+     "descr": "讀寫本機檔案。args 最後一項改成你要開放的目錄。"},
+    {"id": "playwright", "name": "Playwright", "kind": "local", "transport": "stdio",
+     "command": "npx", "args": '["-y","@playwright/mcp"]', "auth": "none", "needs": "Node.js",
+     "descr": "瀏覽器自動化(Microsoft)。"},
+    # 參考:需連線字串 / 社群版,不預填(避免給錯設定)
+    {"id": "postgres", "name": "PostgreSQL / MySQL", "kind": "ref", "auth": "token",
+     "needs": "連線字串", "doc_url": "https://github.com/modelcontextprotocol/servers",
+     "descr": "資料庫查詢。需連線字串,套件多為社群版,請自行確認後用「新增下游」加入。"},
+    {"id": "redis", "name": "Redis", "kind": "ref", "auth": "token",
+     "needs": "連線字串", "doc_url": "https://github.com/redis/mcp-redis",
+     "descr": "Redis 存取。需連線字串。"},
+    {"id": "slack", "name": "Slack / Discord", "kind": "ref", "auth": "token",
+     "needs": "API token", "doc_url": "https://github.com/modelcontextprotocol/servers",
+     "descr": "團隊通訊。官方舊套件已棄用,現多為社群版 + 需 token。"},
+]
 
 
 def _encrypt_existing_secrets():
@@ -170,6 +278,54 @@ def _encrypt_existing_secrets():
             if ci != r["client_info"] or tk != r["tokens"]:
                 c.execute("UPDATE oauth_tokens SET client_info=?, tokens=? WHERE server_slug=?",
                           (ci, tk, r["server_slug"]))
+# ── Skill drafts ─────────────────────────────────────────
+def get_skill_draft(composite_name):
+    with _db() as c:
+        row = c.execute("SELECT * FROM skill_drafts WHERE composite_name=?", (composite_name,)).fetchone()
+    return dict(row) if row else None
+
+
+def save_skill_draft(composite_name, skill_md, purpose=""):
+    with _db() as c:
+        c.execute(
+            "INSERT INTO skill_drafts (composite_name, purpose, skill_md, updated_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(composite_name) DO UPDATE SET purpose=excluded.purpose, skill_md=excluded.skill_md, updated_at=excluded.updated_at",
+            (composite_name, purpose, skill_md, _now()),
+        )
+
+
+# ── MCP 參考目錄 ─────────────────────────────────────────
+def list_directory_entries():
+    with _db() as c:
+        rows = c.execute(
+            "SELECT * FROM directory_entries ORDER BY builtin DESC, kind, name"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_directory_entry(entry_id):
+    with _db() as c:
+        row = c.execute("SELECT * FROM directory_entries WHERE id=?", (entry_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def add_directory_entry(entry_id, name, kind, transport, base_url, command, args_json, auth, needs, doc_url, descr):
+    with _db() as c:
+        c.execute(
+            "INSERT INTO directory_entries "
+            "(id,name,kind,transport,base_url,command,args,auth,needs,doc_url,descr,builtin) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,0) "
+            "ON CONFLICT(id) DO UPDATE SET name=excluded.name,kind=excluded.kind,transport=excluded.transport,"
+            "base_url=excluded.base_url,command=excluded.command,args=excluded.args,auth=excluded.auth,"
+            "needs=excluded.needs,doc_url=excluded.doc_url,descr=excluded.descr",
+            (entry_id, name, kind, transport, base_url, command, args_json, auth, needs, doc_url, descr),
+        )
+
+
+def delete_directory_entry(entry_id):
+    """只能刪自訂項;builtin 項刪了下次啟動會補回。"""
+    with _db() as c:
+        c.execute("DELETE FROM directory_entries WHERE id=? AND builtin=0", (entry_id,))
 
 
 # ── servers ───────────────────────────────────────────────
@@ -575,3 +731,65 @@ def set_custom_tool_flag(name, *, enabled=None, needs_confirm=None):
     params.append(name)
     with _db() as c:
         c.execute(f"UPDATE custom_tools SET {', '.join(sets)} WHERE name = ?", params)
+
+
+# ── composite_tools(複合工具:依序執行多個 Hub 工具) ──────
+def _composite_row(row):
+    d = dict(row)
+    d["params"] = json.loads(d["params"] or "[]")
+    d["steps"] = json.loads(d["steps"] or "[]")
+    return d
+
+
+def upsert_composite_tool(name, description, params_json, steps_json, output="collect", group_name=""):
+    with _db() as c:
+        c.execute(
+            """
+            INSERT INTO composite_tools (name, description, params, steps, output, group_name)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                description=excluded.description,
+                params=excluded.params,
+                steps=excluded.steps,
+                output=excluded.output,
+                group_name=excluded.group_name
+            """,
+            (name, description, params_json, steps_json, output, group_name),
+        )
+
+
+def list_composite_tools():
+    with _db() as c:
+        rows = c.execute("SELECT * FROM composite_tools ORDER BY name").fetchall()
+    return [_composite_row(r) for r in rows]
+
+
+def get_composite_tool(name):
+    with _db() as c:
+        row = c.execute("SELECT * FROM composite_tools WHERE name = ?", (name,)).fetchone()
+    return _composite_row(row) if row else None
+
+
+def enabled_composite_tools():
+    with _db() as c:
+        rows = c.execute("SELECT * FROM composite_tools WHERE enabled = 1").fetchall()
+    return [_composite_row(r) for r in rows]
+
+
+def delete_composite_tool(name):
+    with _db() as c:
+        c.execute("DELETE FROM composite_tools WHERE name = ?", (name,))
+        c.execute("DELETE FROM skill_drafts WHERE composite_name = ?", (name,))
+
+
+def set_composite_tool_flag(name, *, enabled=None, needs_confirm=None):
+    sets, params = [], []
+    if enabled is not None:
+        sets.append("enabled = ?"); params.append(1 if enabled else 0)
+    if needs_confirm is not None:
+        sets.append("needs_confirm = ?"); params.append(1 if needs_confirm else 0)
+    if not sets:
+        return
+    params.append(name)
+    with _db() as c:
+        c.execute(f"UPDATE composite_tools SET {', '.join(sets)} WHERE name = ?", params)
