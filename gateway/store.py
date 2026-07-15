@@ -395,6 +395,7 @@ def delete_server(slug):
     with _db() as c:
         c.execute("DELETE FROM servers WHERE slug = ?", (slug,))
         c.execute("DELETE FROM tools_cache WHERE server_slug = ?", (slug,))
+        c.execute("DELETE FROM oauth_tokens WHERE server_slug = ?", (slug,))
 
 
 # ── tools_cache ───────────────────────────────────────────
@@ -572,6 +573,12 @@ def get_oauth_tokens(slug):
     with _db() as c:
         row = c.execute("SELECT tokens FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
     return crypto.dec(row["tokens"]) or None if row and row["tokens"] else None
+
+
+def clear_oauth(slug):
+    """清除一台下游的 OAuth client 與 token，下次連線會重走 DCR。"""
+    with _db() as c:
+        c.execute("DELETE FROM oauth_tokens WHERE server_slug = ?", (slug,))
 
 
 # ── custom_tools(自訂工具:把 HTTP API 包成 MCP 工具) ──────

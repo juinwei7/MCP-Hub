@@ -92,7 +92,7 @@ gateway/
 ├── openapi.py      OpenAPI 規格匯入
 ├── directory.py    公開 API 目錄搜尋(APIs.guru)
 ├── config.py       共用設定(可用環境變數覆寫)
-└── auth.py         OAuth 骨架
+└── auth.py         OAuth 2.1 + PKCE 授權
 tests/test_smoke.py 冒煙測試(標準庫 unittest,免裝 pytest)
 start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
 ```
@@ -130,6 +130,6 @@ start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
 
 ## 尚未完成(Roadmap)
 
-- OAuth 2.1 授權流程(目前為骨架,需真實 OAuth 服務才跑得完)
+- OAuth client 預先註冊(無 DCR 服務的 client_id / secret 設定)
 - 管理台登入驗證(供遠端部署)
 - Hub 以 HTTP 對外(讓 client 貼一個 URL 就連,免 stdio)

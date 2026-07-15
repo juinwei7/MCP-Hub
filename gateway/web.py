@@ -489,6 +489,7 @@ def set_tool_desc(slug: str, tool: str, desc: str = Form("")):
 
 
 # ── OAuth 互動授權(骨架,需真實 OAuth 服務才跑得完) ──────────
+# OAuth 2.1 + PKCE 互動授權入口。
 @app.get("/servers/{slug}/oauth/start")
 async def oauth_start(request: Request, slug: str):
     srv = store.get_server(slug)
@@ -507,15 +508,20 @@ async def oauth_start(request: Request, slug: str):
                 await s.list_tools()
         except Exception as e:
             err_box["err"] = e
+        finally:
+            flow.close()
 
     task = asyncio.create_task(run())
     # 等「拿到授權網址」或「背景任務先失敗」,誰先到算誰
-    url_fut = asyncio.ensure_future(flow.auth_url)
+    url_fut = flow.auth_url
     await asyncio.wait({url_fut, task}, timeout=15, return_when=asyncio.FIRST_COMPLETED)
     if url_fut.done() and not url_fut.cancelled() and url_fut.exception() is None:
         return RedirectResponse(url_fut.result(), status_code=303)
 
-    url_fut.cancel()
+    if not task.done():
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    flow.close()
     return templates.TemplateResponse(request, "message.html", {
         "active": "servers", "heading": "無法開始授權",
         "message": _oauth_error_hint(err_box.get("err")),
@@ -523,23 +529,40 @@ async def oauth_start(request: Request, slug: str):
 
 
 def _oauth_error_hint(err):
-    """把 OAuth 失敗轉成看得懂的原因。"""
-    s = str(err or "")
-    if "Registration failed" in s or "registration" in s.lower():
-        return ("這台服務不支援「自動註冊(Dynamic Client Registration)」——它要求你先自行註冊一個 "
-                "OAuth client 並提供 client_id / secret。Google(Gmail / Calendar)、GitHub 多屬此類,"
-                "本 Hub 目前只支援「支援自動註冊」的服務(如 Sentry / Linear / Notion 等)。")
-    return ("沒能取得授權網址。最常見原因:這台服務不支援「自動註冊(Dynamic Client Registration)」——"
-            "需你先自行註冊 OAuth client 並提供 client_id / secret(Google、GitHub 屬此類,本 Hub 尚未支援)。"
-            "本 Hub 目前只支援「支援自動註冊」的服務(如 Sentry / Linear / Notion)。"
-            "少數情況是 URL 錯誤或該服務不支援 OAuth。"
-            + (f"(技術細節:{s})" if s else ""))
+    """把 TaskGroup / ExceptionGroup 解包，顯示真正的 OAuth 原因。"""
+    details = _exception_details(err)
+    lowered = details.lower()
+    if "429" in lowered or "too_many_requests" in lowered:
+        return f"OAuth client 註冊頻率過高，請稍後重試。技術細節：{details}"
+    if "invalid_client_metadata" in lowered:
+        return f"OAuth client metadata 被授權服務拒絕。技術細節：{details}"
+    if "registration failed" in lowered:
+        return f"Dynamic Client Registration 失敗。技術細節：{details}"
+    return f"OAuth 授權初始化失敗。技術細節：{details or '未知錯誤'}"
+
+
+def _exception_details(err):
+    if err is None:
+        return ""
+    nested = getattr(err, "exceptions", None)
+    if nested:
+        parts = [_exception_details(child) for child in nested]
+        return " | ".join(dict.fromkeys(part for part in parts if part))
+    return str(err)
 
 
 @app.get("/oauth/callback", response_class=HTMLResponse)
-def oauth_callback(request: Request, code: str = "", state: str = ""):
-    ok = auth.ConsoleOAuthFlow.resolve_callback(code, state)
-    msg = "授權完成,可關閉此頁並回管理台重新整理工具。" if ok else "找不到進行中的授權流程。"
+async def oauth_callback(
+        request: Request, code: str = "", state: str = "",
+        error: str = "", error_description: str = ""):
+    callback_error = error_description or error
+    ok = await auth.ConsoleOAuthFlow.resolve_callback(code, state, callback_error)
+    if error:
+        msg = f"授權服務未完成授權：{error_description or error}"
+    elif ok:
+        msg = "已收到授權回呼，Hub 正在交換 token。可回管理台重新整理工具。"
+    else:
+        msg = "找不到對應的授權流程，可能已逾時或 state 不符。"
     return templates.TemplateResponse(request, "message.html", {
         "heading": "OAuth 回呼", "message": msg, "back_href": "/", "back_label": "← 回 Servers"})
 

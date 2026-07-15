@@ -10,6 +10,7 @@
 覆蓋:store CRUD、解析 helper、每個網頁 GET 200、路由不互相遮蔽。
 """
 import os
+import json
 import tempfile
 import unittest
 
@@ -20,7 +21,7 @@ os.remove(_TMP_KEY)   # 讓 crypto 自己產生
 os.environ["MCP_HUB_DB"] = _TMP_DB
 os.environ["MCP_HUB_KEY"] = _TMP_KEY
 
-from gateway import store, web, crypto, skills  # noqa: E402
+from gateway import store, web, crypto, skills, auth  # noqa: E402
 from gateway.web import (  # noqa: E402
     _entry_to_server, _extract_mcp_servers, _parse_tool_form, _parse_composite_form,
 )
@@ -134,6 +135,69 @@ class TestCrypto(unittest.TestCase):
         self.assertEqual(store.get_server("encsrv")["bearer_token"], "TOP-SECRET-XYZ")  # 讀回明文
         store.delete_server("encsrv")
 
+
+class TestOAuth(unittest.IsolatedAsyncioTestCase):
+    async def test_public_client_metadata_uses_pkce_without_secret(self):
+        metadata = auth._client_metadata()
+        self.assertEqual(metadata.token_endpoint_auth_method, "none")
+        self.assertEqual(metadata.grant_types, ["authorization_code", "refresh_token"])
+
+    async def test_callback_is_matched_by_state(self):
+        first = auth.ConsoleOAuthFlow.start("first")
+        second = auth.ConsoleOAuthFlow.start("second")
+        await first.redirect_handler("https://auth.example/authorize?state=state-one")
+        await second.redirect_handler("https://auth.example/authorize?state=state-two")
+
+        self.assertFalse(await auth.ConsoleOAuthFlow.resolve_callback("wrong", "unknown"))
+        self.assertTrue(await auth.ConsoleOAuthFlow.resolve_callback("code-two", "state-two"))
+        self.assertEqual(await second.callback_handler(), ("code-two", "state-two"))
+        self.assertFalse(first.code.done())
+
+        first.close()
+        second.close()
+
+    async def test_authorization_url_requires_state(self):
+        flow = auth.ConsoleOAuthFlow.start("missing-state")
+        with self.assertRaisesRegex(ValueError, "missing state"):
+            await flow.redirect_handler("https://auth.example/authorize")
+        flow.close()
+
+    async def test_callback_error_is_forwarded_to_waiting_flow(self):
+        flow = auth.ConsoleOAuthFlow.start("denied")
+        await flow.redirect_handler("https://auth.example/authorize?state=denied-state")
+
+        self.assertTrue(await auth.ConsoleOAuthFlow.resolve_callback(
+            "", "denied-state", "The user denied access"))
+        with self.assertRaisesRegex(RuntimeError, "denied access"):
+            await flow.callback_handler()
+
+        flow.close()
+
+    async def test_task_group_error_shows_nested_registration_failure(self):
+        error = ExceptionGroup(
+            "unhandled errors in a TaskGroup",
+            [RuntimeError('Registration failed: 400 {"error":"invalid_client_metadata"}')],
+        )
+        message = web._oauth_error_hint(error)
+        self.assertIn("client metadata", message)
+        self.assertIn("invalid_client_metadata", message)
+
+    async def test_incompatible_stored_secret_client_is_cleared(self):
+        slug = "legacy-oauth-client"
+        store.set_oauth_client_info(slug, json.dumps({
+            "client_id": "legacy-client",
+            "redirect_uris": ["http://localhost:8765/oauth/callback"],
+            "token_endpoint_auth_method": "client_secret_post",
+        }))
+        store.set_oauth_tokens(slug, json.dumps({
+            "access_token": "legacy-token",
+            "token_type": "Bearer",
+        }))
+
+        storage = auth.SqliteTokenStorage(slug)
+        self.assertIsNone(await storage.get_tokens())
+        self.assertIsNone(await storage.get_client_info())
+        self.assertIsNone(store.get_oauth_tokens(slug))
 
 class TestParsers(unittest.TestCase):
     def test_slugify(self):

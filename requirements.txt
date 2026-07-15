@@ -1,4 +1,4 @@
-mcp>=1.28
+mcp>=1.28,<2
 fastapi>=0.115
 uvicorn>=0.30
 python-multipart>=0.0.9
