@@ -13,8 +13,17 @@
 import asyncio
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 from mcp.client.auth import OAuthClientProvider, TokenStorage
-from mcp.shared.auth import OAuthClientMetadata, OAuthToken, OAuthClientInformationFull
+from mcp.client.auth.utils import (
+    build_oauth_authorization_server_metadata_discovery_urls,
+    build_protected_resource_metadata_discovery_urls,
+    create_oauth_metadata_request,
+    handle_auth_metadata_response,
+    handle_protected_resource_response,
+)
+from mcp.shared.auth import OAuthClientMetadata, OAuthMetadata, OAuthToken, OAuthClientInformationFull
+from mcp.shared.auth_utils import calculate_token_expiry
 
 from gateway import store
 from gateway.config import BASE_URL
@@ -34,6 +43,9 @@ class SqliteTokenStorage(TokenStorage):
 
     async def set_tokens(self, tokens):
         store.set_oauth_tokens(self.slug, tokens.model_dump_json())
+        expires_at = calculate_token_expiry(tokens.expires_in)
+        if expires_at is not None:
+            store.set_oauth_expiry(self.slug, expires_at)
 
     async def get_client_info(self):
         return self._compatible_client_info()
@@ -67,19 +79,75 @@ def _client_metadata():
     )
 
 
-def provider_for(server, redirect_handler=None, callback_handler=None):
+async def _discover_oauth_metadata(server_url):
+    """
+    Best-effort 做一次 PRM + ASM discovery(跟 SDK 的 async_auth_flow 401 分支的
+    Step 1/2 同一套邏輯,搬出 generator 自己跑),失敗就回 None,不擋住主流程。
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            prm = None
+            for url in build_protected_resource_metadata_discovery_urls(None, server_url):
+                response = await client.send(create_oauth_metadata_request(url))
+                prm = await handle_protected_resource_response(response)
+                if prm:
+                    break
+
+            auth_server_url = None
+            if prm and prm.authorization_servers:
+                auth_server_url = str(prm.authorization_servers[0])
+
+            for url in build_oauth_authorization_server_metadata_discovery_urls(
+                    auth_server_url, server_url):
+                response = await client.send(create_oauth_metadata_request(url))
+                ok, asm = await handle_auth_metadata_response(response)
+                if asm:
+                    return asm
+                if not ok:
+                    break
+    except Exception:
+        return None
+    return None
+
+
+async def provider_for(server, redirect_handler=None, callback_handler=None):
     """
     產生一個 OAuthClientProvider 給下游連線用。
     - 非互動情境(hub_server 轉發):不給 handler,靠已存的 token;沒 token 就會失敗(需先在管理台授權)。
     - 互動情境(管理台授權):由 ConsoleOAuthFlow 提供 redirect/callback handler。
+
+    SDK 重建 provider 時只會從 storage 載入 token 本身,不會載入到期時間或
+    Authorization Server metadata,導致 refresh 永遠不會被觸發、或觸發了打錯 token
+    endpoint。這裡在建好後手動把之前存的這兩項補回 context,讓 refresh 真的能運作。
     """
-    return OAuthClientProvider(
+    slug = server["slug"]
+    provider = OAuthClientProvider(
         server_url=server["base_url"],
         client_metadata=_client_metadata(),
-        storage=SqliteTokenStorage(server["slug"]),
+        storage=SqliteTokenStorage(slug),
         redirect_handler=redirect_handler,
         callback_handler=callback_handler,
     )
+
+    await provider._initialize()
+
+    expires_at = store.get_oauth_expiry(slug)
+    if expires_at is not None:
+        provider.context.token_expiry_time = expires_at
+
+    cached_metadata = store.get_oauth_metadata(slug)
+    if cached_metadata:
+        try:
+            provider.context.oauth_metadata = OAuthMetadata.model_validate_json(cached_metadata)
+        except Exception:
+            cached_metadata = None
+    if not cached_metadata and provider.context.current_tokens:
+        metadata = await _discover_oauth_metadata(server["base_url"])
+        if metadata:
+            provider.context.oauth_metadata = metadata
+            store.set_oauth_metadata(slug, metadata.model_dump_json())
+
+    return provider
 
 
 # ── 管理台互動授權流程(skeleton,需真服務才跑得完) ──────────────

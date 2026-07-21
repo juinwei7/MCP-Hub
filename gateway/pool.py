@@ -59,7 +59,7 @@ async def _open_session(server):
                 await asyncio.wait_for(session.initialize(), DOWNSTREAM_TIMEOUT)
                 yield session
     else:
-        kw = hub.connect_kwargs(server)
+        kw = await hub.connect_kwargs(server)
         async with streamablehttp_client(
             server["base_url"], headers=kw.get("headers"), auth=kw.get("auth")
         ) as (read, write, _):

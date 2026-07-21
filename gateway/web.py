@@ -497,7 +497,7 @@ async def oauth_start(request: Request, slug: str):
         return RedirectResponse("/", status_code=303)
 
     flow = auth.ConsoleOAuthFlow.start(slug)
-    provider = auth.provider_for(srv, flow.redirect_handler, flow.callback_handler)
+    provider = await auth.provider_for(srv, flow.redirect_handler, flow.callback_handler)
 
     # 背景觸發授權握手:provider 會呼叫 redirect_handler 給我們授權網址,並等 callback
     err_box = {}
@@ -506,6 +506,8 @@ async def oauth_start(request: Request, slug: str):
         try:
             async with hub._http_session(srv["base_url"], auth=provider) as s:
                 await s.list_tools()
+            if provider.context.oauth_metadata:
+                store.set_oauth_metadata(slug, provider.context.oauth_metadata.model_dump_json())
         except Exception as e:
             err_box["err"] = e
         finally:

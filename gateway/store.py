@@ -130,6 +130,12 @@ def init_db():
             )
             """
         )
+        # 遷移:OAuth token 絕對到期時間 + 快取的 Authorization Server metadata
+        # (讓重建的 OAuthClientProvider 能正確判斷是否該 refresh、該打哪個 token endpoint)
+        ocols = [r["name"] for r in c.execute("PRAGMA table_info(oauth_tokens)").fetchall()]
+        for col, decl in [("expires_at", "REAL"), ("metadata", "TEXT")]:
+            if col not in ocols:
+                c.execute(f"ALTER TABLE oauth_tokens ADD COLUMN {col} {decl}")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS custom_tools (
@@ -573,6 +579,28 @@ def get_oauth_tokens(slug):
     with _db() as c:
         row = c.execute("SELECT tokens FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
     return crypto.dec(row["tokens"]) or None if row and row["tokens"] else None
+
+
+def set_oauth_expiry(slug, expires_at):
+    """存 access token 的絕對到期時間(epoch 秒);非密鑰,不加密。"""
+    _upsert_oauth(slug, "expires_at", expires_at)
+
+
+def get_oauth_expiry(slug):
+    with _db() as c:
+        row = c.execute("SELECT expires_at FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
+    return row["expires_at"] if row and row["expires_at"] is not None else None
+
+
+def set_oauth_metadata(slug, metadata_json):
+    """存 Authorization Server 的探查文件(含 token_endpoint);公開資訊,不加密。"""
+    _upsert_oauth(slug, "metadata", metadata_json)
+
+
+def get_oauth_metadata(slug):
+    with _db() as c:
+        row = c.execute("SELECT metadata FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
+    return row["metadata"] if row and row["metadata"] else None
 
 
 def clear_oauth(slug):

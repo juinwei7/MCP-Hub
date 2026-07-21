@@ -26,11 +26,11 @@ def headers_for(server):
     return None
 
 
-def connect_kwargs(server):
+async def connect_kwargs(server):
     """http 下游的連線參數(headers / auth)。"""
     if server.get("auth_type") == "oauth":
         from gateway import auth  # 延遲匯入避免循環
-        return {"auth": auth.provider_for(server)}
+        return {"auth": await auth.provider_for(server)}
     headers = headers_for(server)
     return {"headers": headers} if headers else {}
 
@@ -63,7 +63,7 @@ async def _session(server):
         ) as s:
             yield s
     else:
-        kw = connect_kwargs(server)
+        kw = await connect_kwargs(server)
         async with _http_session(server["base_url"], headers=kw.get("headers"), auth=kw.get("auth")) as s:
             yield s
 
