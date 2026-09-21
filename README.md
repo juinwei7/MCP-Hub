@@ -57,7 +57,7 @@ claude mcp add my-hub -e PYTHONPATH="<專案路徑>" -- "<專案>/.venv/bin/pyth
 
 接上後,Claude 的工具清單就會出現 Hub 聚合的所有下游工具(如 `orgpulse__…`)。
 
-> Docker 部署與容器內接 Claude 的方式見 **[DEPLOY.md](DEPLOY.md)**。
+> 其他部署方式與 stdio 下游的執行環境需求見 **[DEPLOY.md](DEPLOY.md)**。
 
 ### macOS 原生 app
 
@@ -109,7 +109,7 @@ gateway/
 └── api.py          JSON API(給原生 client 用)
 macos/              macOS 原生 app(SwiftUI;後端仍是上面那套 Python)
 tests/              冒煙測試 + API 測試(標準庫 unittest,免裝 pytest)
-start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
+start.sh · DEPLOY.md
 ```
 
 ---
@@ -118,7 +118,7 @@ start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
-| `MCP_HUB_HOST` | `127.0.0.1` | 管理台監聽位址(Docker 內設 `0.0.0.0`) |
+| `MCP_HUB_HOST` | `127.0.0.1` | 管理台監聽位址(預設只綁本機) |
 | `MCP_HUB_PORT` | `8765` | 管理台 port |
 | `MCP_HUB_DB` | `actions.db` | SQLite 路徑 |
 | `MCP_HUB_KEY` | `.secret_key` | 加密金鑰檔路徑 |

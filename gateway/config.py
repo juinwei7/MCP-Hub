@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 # 核准網站要監聽的位址
-# 預設只綁本機(安全);Docker 內需綁 0.0.0.0 才能被 host 連到 → 用 MCP_HUB_HOST 覆寫。
+# 預設只綁本機 —— 管理台沒有登入,這是唯一的保護。要對外開放得明確覆寫。
 HOST = os.environ.get("MCP_HUB_HOST", "127.0.0.1")
 PORT = int(os.environ.get("MCP_HUB_PORT", "8765"))
 BASE_URL = f"http://localhost:{PORT}"

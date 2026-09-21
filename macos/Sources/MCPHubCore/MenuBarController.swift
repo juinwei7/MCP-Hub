@@ -56,6 +56,7 @@ final class MenuBarController {
             menu.addItem(action("開啟主視窗", #selector(openWindow)))
             menu.addItem(action("全部重新檢查", #selector(checkAll)))
             menu.addItem(action("開啟管理台", #selector(openAdmin)))
+            menu.addItem(action("複製接入 Claude 的指令", #selector(copyClaudeCommand)))
         } else if case .failed(let reason) = state.backend {
             menu.addItem(.separator())
             for line in reason.split(separator: "\n") {
@@ -151,6 +152,23 @@ final class MenuBarController {
 
     @objc private func checkAll() {
         Task { await state.checkAll() }
+    }
+
+    /// 把 claude mcp add 的指令放進剪貼簿。
+    ///
+    /// 環境變數不能省:hub_server 是 Claude 獨立啟動的,不經過這個 app。
+    /// 少了它們,聚合器會讀到專案目錄那份空的 actions.db,使用者在 app 裡的
+    /// 設定一個都不會生效 —— 而且不會有任何錯誤訊息,只是「工具怎麼都沒出現」。
+    @objc private func copyClaudeCommand() {
+        let env = ProcessInfo.processInfo.environment
+        let command = BackendSupervisor.claudeAddCommand(
+            dataDir: BackendSupervisor.dataDirectory.path,
+            python: env["MCPHUB_PYTHON"] ?? "<專案>/.venv/bin/python",
+            repo: env["MCPHUB_REPO"] ?? "<專案路徑>")
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        state.lastError = "已複製接入指令到剪貼簿,貼到終端機執行即可。"
     }
 
     @objc private func openAdmin() {

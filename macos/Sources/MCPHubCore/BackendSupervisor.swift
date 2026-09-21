@@ -253,6 +253,21 @@ final class BackendSupervisor {
         try? FileManager.default.removeItem(at: pidFile)
     }
 
+    /// 產生接入 Claude 的指令。
+    ///
+    /// 抽成純函式是為了能測試 —— 這串指令若少了環境變數,使用者會遇到最難查的
+    /// 那種問題:聚合器讀到專案目錄那份空的 actions.db,app 裡的設定一個都不生效,
+    /// 而且沒有任何錯誤訊息,只是「工具怎麼都沒出現」。
+    static func claudeAddCommand(dataDir: String, python: String, repo: String) -> String {
+        """
+        claude mcp add my-hub \\
+          -e PYTHONPATH="\(repo)" \\
+          -e MCP_HUB_DB="\(dataDir)/actions.db" \\
+          -e MCP_HUB_KEY="\(dataDir)/.secret_key" \\
+          -- "\(python)" -m gateway.hub_server
+        """
+    }
+
     private static func randomToken() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
