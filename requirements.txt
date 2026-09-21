@@ -5,3 +5,9 @@ python-multipart>=0.0.9
 pyyaml>=6.0
 cryptography>=42.0
 httpx>=0.27
+# 管理台的模板引擎。starlette 的 Jinja2Templates 不會自動帶進來,
+# 少了它 gateway.web 一匯入就爆 —— 開發環境是手動裝的,所以一直沒發現。
+jinja2>=3.1
+# pool.py 直接用 anyio 的 task group 與 memory stream。
+# 目前靠 mcp 間接帶進來,但直接 import 的東西就該自己宣告。
+anyio>=4.5
