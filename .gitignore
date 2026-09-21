@@ -20,3 +20,14 @@ __pycache__/
 
 # 暫存 / roadmap
 optimization.html
+
+# macOS app 建置產物
+macos/.build/
+macos/build/
+
+# 打包產物與 runtime 快取
+.build/
+build/
+
+# 規格文件只留本機,不進版控
+specs/

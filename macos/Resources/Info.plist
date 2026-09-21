@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>MCP Hub</string>
+    <key>CFBundleDisplayName</key>
+    <string>MCP Hub</string>
+    <key>CFBundleIdentifier</key>
+    <string>local.mcphub.app</string>
+    <key>CFBundleExecutable</key>
+    <string>MCPHub</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+
+    <!-- 選單列 app,不佔 Dock、不開主視窗 -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- 後端只綁 127.0.0.1,但 ATS 預設擋純 HTTP,必須明確開放本機 -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+</dict>
+</plist>
