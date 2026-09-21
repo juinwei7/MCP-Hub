@@ -102,6 +102,30 @@ jobs:
           fi
           echo "無殘留程序"
 
+  # ── Windows client:Core 的編譯與測試 ─────────────────
+  # 開發機是 macOS,沒有 .NET 也沒有 Windows —— 這個 job 就是編譯器與測試機。
+  # 介面層(WinUI、系統匣、Toast)還沒實作,那些需要實機互動才驗證得了。
+  windows-client:
+    name: Windows client (Core)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: 建置
+        working-directory: windows
+        # 警告當錯誤已在 csproj 設定 —— 沒有本機編譯器,CI 是唯一的把關
+        run: dotnet build MCPHub.Core/MCPHub.Core.csproj -c Release
+
+      - name: 測試
+        working-directory: windows
+        # 含 Job Object 的實機驗證:起真的程序、關掉 job、確認被收掉
+        run: dotnet test MCPHub.Core.Tests/MCPHub.Core.Tests.csproj -c Release --verbosity normal
+
   # ── 自足 bundle:驗證打包路徑 ──────────────────────────
   bundle:
     name: 自足 bundle
