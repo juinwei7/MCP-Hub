@@ -80,10 +80,27 @@ async def call_tool(server, name, arguments):
         return await s.call_tool(name, arguments or {})
 
 
+def exception_details(err):
+    """
+    把 ExceptionGroup / TaskGroup 解開成真正的原因。
+
+    MCP SDK 的連線走 anyio task group,任何下游錯誤都會被包成 ExceptionGroup,
+    直接 str() 只會得到「unhandled errors in a TaskGroup (1 sub-exception)」——
+    使用者看不懂,也無從判斷是網址錯、沒授權、還是對方掛了。
+    """
+    if err is None:
+        return ""
+    nested = getattr(err, "exceptions", None)
+    if nested:
+        parts = [exception_details(child) for child in nested]
+        return " | ".join(dict.fromkeys(part for part in parts if part))
+    return str(err)
+
+
 async def check_server(server):
     """健康檢查:回傳 (status, detail, tools_or_None)。"""
     try:
         tools = await fetch_tools(server)
         return "ok", f"{len(tools)} 個工具", tools
     except Exception as e:
-        return "error", str(e)[:200], None
+        return "error", (exception_details(e) or str(e))[:200], None
