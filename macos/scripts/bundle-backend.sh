@@ -19,7 +19,13 @@ APP="${1:-build/MCP Hub.app}"
 REPO="$(cd .. && pwd)"
 # 放使用者快取目錄,不放 .build —— 會被 make clean 砍掉的東西不算快取
 CACHE="${XDG_CACHE_HOME:-$HOME/Library/Caches}/mcphub-runtime"
-PY_VERSION="3.11"
+PY_VERSION="3.11.16"
+
+# 固定 runtime 版本,不查 GitHub API。兩個理由:
+#   1. 未驗證的 API 呼叫在 CI runner 上會撞速率限制回 403(實際發生過)
+#   2. 「最新版」代表每次建出來的東西都可能不一樣,打包腳本不該這樣
+# 要升級就改這裡,順便會被 commit 記錄下來。
+PBS_RELEASE="${PBS_RELEASE:-20260901}"
 
 say() { printf "\033[1m→ %s\033[0m\n" "$*"; }
 die() { printf "\033[31m✗ %s\033[0m\n" "$*" >&2; exit 1; }
@@ -37,25 +43,17 @@ esac
 
 # ── 取得 runtime ─────────────────────────────────────────
 mkdir -p "$CACHE"
-TARBALL="$CACHE/cpython-$PY_VERSION-$RUNTIME_ARCH.tar.gz"
+TARBALL="$CACHE/cpython-$PY_VERSION-$PBS_RELEASE-$RUNTIME_ARCH.tar.gz"
 
 if [ ! -f "$TARBALL" ]; then
-    say "查詢 python-build-standalone 最新版本"
-    URL=$(curl -sSf --max-time 30 \
-        "https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest" \
-        | python3 -c "
-import sys, json
-assets = json.load(sys.stdin).get('assets', [])
-want = ('cpython-$PY_VERSION', '$RUNTIME_ARCH', 'install_only_stripped.tar.gz')
-for a in assets:
-    n = a['name']
-    if all(w in n for w in want):
-        print(a['browser_download_url']); break
-") || die "查不到可用的 runtime,請確認網路"
-    [ -n "$URL" ] || die "找不到 $PY_VERSION / $RUNTIME_ARCH 的 install_only 版本"
+    ASSET="cpython-${PY_VERSION}%2B${PBS_RELEASE}-${RUNTIME_ARCH}-install_only_stripped.tar.gz"
+    URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${ASSET}"
 
-    say "下載 runtime($(basename "$URL"))"
-    curl -sSfL --max-time 300 "$URL" -o "$TARBALL.tmp" || die "下載失敗"
+    say "下載 runtime(cpython $PY_VERSION / $RUNTIME_ARCH / release $PBS_RELEASE)"
+    curl -sSfL --max-time 300 "$URL" -o "$TARBALL.tmp" \
+        || die "下載失敗:$URL
+   確認 PBS_RELEASE=$PBS_RELEASE 與 PY_VERSION=$PY_VERSION 這組合存在,
+   或設 PBS_RELEASE 環境變數指定其他版本。"
     mv "$TARBALL.tmp" "$TARBALL"
 else
     say "使用已快取的 runtime"
@@ -91,9 +89,9 @@ say "精簡不需要的檔案"
 find "$BACKEND" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
 find "$BACKEND" -type d -name 'test' -path '*/lib/python*' -prune -exec rm -rf {} + 2>/dev/null || true
 find "$BACKEND" -type d -name 'tests' -path '*/lib/python*' -prune -exec rm -rf {} + 2>/dev/null || true
-rm -rf "$BACKEND/lib/python$PY_VERSION/idlelib" \
-       "$BACKEND/lib/python$PY_VERSION/tkinter" \
-       "$BACKEND/lib/python$PY_VERSION/turtledemo" \
+# lib 目錄是 python3.11,不帶 patch 版號
+LIBDIR="$BACKEND/lib/python${PY_VERSION%.*}"
+rm -rf "$LIBDIR/idlelib" "$LIBDIR/tkinter" "$LIBDIR/turtledemo" \
        "$BACKEND/share" 2>/dev/null || true
 
 # ── 驗證 ─────────────────────────────────────────────────

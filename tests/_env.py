@@ -13,8 +13,13 @@ import atexit
 import os
 import tempfile
 
-DB_PATH = tempfile.mkstemp(prefix="mcphub_test_", suffix=".db")[1]
-KEY_PATH = tempfile.mkstemp(prefix="mcphub_key_", suffix="")[1]
+# mkstemp 會回傳一個「還開著」的 file descriptor。POSIX 可以刪除開啟中的檔案,
+# Windows 不行 —— 不關掉的話 os.remove 會 WinError 32,整個測試模組載入失敗。
+# (這個 bug 只在 Windows 現形,是 CI 的三平台矩陣抓到的。)
+_db_fd, DB_PATH = tempfile.mkstemp(prefix="mcphub_test_", suffix=".db")
+os.close(_db_fd)
+_key_fd, KEY_PATH = tempfile.mkstemp(prefix="mcphub_key_", suffix="")
+os.close(_key_fd)
 os.remove(KEY_PATH)   # 讓 crypto 自己產生
 
 os.environ["MCP_HUB_DB"] = DB_PATH
