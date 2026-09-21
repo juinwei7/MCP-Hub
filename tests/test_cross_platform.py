@@ -29,9 +29,16 @@ class TestClaudeConfigPaths(unittest.TestCase):
     """各平台要找對 Claude Desktop 的設定檔位置。"""
 
     def paths_on(self, platform, env=None):
+        """
+        回傳的路徑一律normalize成正斜線。
+
+        這些測試會在三個平台上跑,而 Path 在 Windows 上產生的是反斜線 ——
+        直接比對字串的話,同一段程式碼在 Windows 上就會「失敗」,但失敗的是
+        斷言的寫法,不是被測的邏輯。
+        """
         with mock.patch.object(sys, "platform", platform), \
              mock.patch.dict(os.environ, env or {}, clear=False):
-            return [str(p) for p in web._claude_config_paths()]
+            return [str(p).replace("\\", "/") for p in web._claude_config_paths()]
 
     def test_macos(self):
         paths = self.paths_on("darwin")
@@ -45,9 +52,12 @@ class TestClaudeConfigPaths(unittest.TestCase):
                          "Windows 不該查 macOS 的路徑")
 
     def test_windows_without_appdata_does_not_crash(self):
-        # APPDATA 不存在是不正常但可能發生的,不該讓整個匯入功能爆掉
+        # APPDATA 不存在是不正常但可能發生的,不該讓整個匯入功能爆掉。
+        # 只拿掉 APPDATA —— clear=True 會連 USERPROFILE 一起清掉,
+        # 那樣 Path.home() 在 Windows 上會直接 RuntimeError,測到的是別的東西。
+        env = {k: v for k, v in os.environ.items() if k != "APPDATA"}
         with mock.patch.object(sys, "platform", "win32"), \
-             mock.patch.dict(os.environ, {}, clear=True):
+             mock.patch.dict(os.environ, env, clear=True):
             paths = [str(p) for p in web._claude_config_paths()]
         self.assertTrue(paths, "至少要留下 ~/.claude.json")
 
@@ -74,6 +84,9 @@ class TestClaudeConfigPaths(unittest.TestCase):
 class TestSecretKeyProtection(unittest.TestCase):
     """金鑰檔必須真的只有本人能讀 —— 各平台用的機制不同。"""
 
+    @unittest.skipIf(sys.platform.startswith("win"),
+                     "Windows 的 os.chmod 只認 read-only 旗標,沒有 POSIX 權限位元 —— "
+                     "那正是 _protect() 改走 ACL 的原因,見 test_windows_calls_icacls")
     def test_posix_sets_0600(self):
         import tempfile
         fd, path = tempfile.mkstemp()
@@ -130,8 +143,9 @@ class TestSecretKeyProtection(unittest.TestCase):
     def test_missing_username_warns(self):
         import io
         err = io.StringIO()
+        env = {k: v for k, v in os.environ.items() if k not in ("USERNAME", "USER")}
         with mock.patch.object(sys, "platform", "win32"), \
-             mock.patch.dict(os.environ, {}, clear=True), \
+             mock.patch.dict(os.environ, env, clear=True), \
              mock.patch.object(sys, "stderr", err):
             crypto._protect(Path(r"C:\x"))
         self.assertIn("警告", err.getvalue())
