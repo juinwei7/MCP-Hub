@@ -11,6 +11,9 @@ final class AppState: ObservableObject {
     @Published var backend: BackendSupervisor.State = .stopped
     @Published var servers: [HubClient.Server] = []
     @Published var actions: [HubClient.Action] = []
+    @Published var customTools: [HubClient.CustomTool] = []
+    @Published var compositeTools: [HubClient.CompositeTool] = []
+    @Published var categories: HubClient.CategoryOverview?
     @Published var lastError: String?
 
     let supervisor = BackendSupervisor()
@@ -59,6 +62,41 @@ final class AppState: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func loadCustomTools() async {
+        do { customTools = try await client.customTools() }
+        catch { lastError = error.localizedDescription }
+    }
+
+    /// 複合工具的步驟可以挑的工具清單。
+    struct StepTool: Identifiable {
+        let name: String
+        let hint: String
+        var id: String { name }
+    }
+
+    @Published var availableStepTools: [StepTool] = []
+
+    func loadAvailableStepTools() async {
+        do {
+            availableStepTools = try await client.stepTools().map {
+                let params = $0.params.map(\.name).joined(separator: ", ")
+                let bits = [$0.description, params.isEmpty ? "" : "參數:\(params)"]
+                return StepTool(name: $0.name,
+                                hint: bits.filter { !$0.isEmpty }.joined(separator: " · "))
+            }
+        } catch { lastError = error.localizedDescription }
+    }
+
+    func loadCompositeTools() async {
+        do { compositeTools = try await client.compositeTools() }
+        catch { lastError = error.localizedDescription }
+    }
+
+    func loadCategories() async {
+        do { categories = try await client.categories() }
+        catch { lastError = error.localizedDescription }
     }
 
     func decide(_ id: String, approve: Bool) async {

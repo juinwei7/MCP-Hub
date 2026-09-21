@@ -15,7 +15,7 @@ import re
 from fastapi import APIRouter, Depends
 
 from gateway import store, custom, composite, skills
-from gateway.api import _fail, publish, require_token
+from gateway.api import _fail, _loads, publish, require_token
 from gateway.dispatch import blocks_to_texts, execute_named_tool
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_token)])
@@ -386,6 +386,40 @@ def update_category(name: str, payload: dict):
 @router.get("/categories/{name}/tools")
 def tools_in_category(name: str):
     return [_custom_out(t) for t in store.list_tools_in_category(name)]
+
+
+# ── 可用的步驟工具 ────────────────────────────────────────
+def _schema_to_params(schema):
+    props = (schema or {}).get("properties") or {}
+    required = set((schema or {}).get("required") or [])
+    return [{"name": k, "type": v.get("type", "string"),
+             "required": k in required, "description": v.get("description", "")}
+            for k, v in props.items()]
+
+
+@router.get("/step-tools")
+def available_step_tools():
+    """
+    複合工具的步驟可以挑哪些工具。
+
+    只列啟用中的 —— 步驟指向一個停用的工具,執行時才會失敗,那時已經太遲。
+    複合工具本身不列入,避免互相引用繞不出來。
+    """
+    out = []
+    for srv in store.enabled_servers():
+        for t in store.list_cached_tools(srv["slug"]):
+            if not t["enabled"]:
+                continue
+            out.append({
+                "name": f"{srv['slug']}__{t['name']}",
+                "description": t.get("desc_override") or t.get("description") or "",
+                "params": _schema_to_params(_loads(t.get("input_schema"), {})),
+                "kind": "downstream",
+            })
+    for t in store.enabled_custom_tools():
+        out.append({"name": t["name"], "description": t["description"] or "",
+                    "params": t.get("params") or [], "kind": "custom"})
+    return sorted(out, key=lambda t: t["name"].lower())
 
 
 # ── 批次操作 ──────────────────────────────────────────────

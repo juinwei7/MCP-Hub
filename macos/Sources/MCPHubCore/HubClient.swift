@@ -196,6 +196,29 @@ struct HubClient {
         try await send("GET", path, body: nil)
     }
 
+    /// 給擴充用的公開入口(同模組)。名稱與 send 區分,避免和既有呼叫混淆。
+    func request<T: Decodable>(_ method: String, _ path: String,
+                               body: [String: Any]? = nil) async throws -> T {
+        try await send(method, path, body: body)
+    }
+
+    /// 204 之類沒有內容的回應 —— 硬要解碼會失敗。
+    func requestVoid(_ method: String, _ path: String,
+                     body: [String: Any]? = nil) async throws {
+        _ = try await rawResponse(method, path, body: body)
+    }
+
+    /// ZIP / 匯出檔這種二進位或非 JSON 的回應。
+    func requestData(_ method: String, _ path: String,
+                     body: [String: Any]? = nil) async throws -> Data {
+        try await rawResponse(method, path, body: body)
+    }
+
+    /// 工具名稱可能含中文或空白,直接塞進路徑會組出無效的網址。
+    func escaped(_ component: String) -> String {
+        component.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? component
+    }
+
     private func send<T: Decodable>(_ method: String, _ path: String,
                                     body: [String: Any]?) async throws -> T {
         // 不能用 appendingPathComponent —— 它會把查詢字串的 ? 與 & 當成路徑字元編碼掉
@@ -232,6 +255,83 @@ struct HubClient {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             throw ClientError.decoding(String(describing: error))
+        }
+    }
+
+    /// 共用的送出與錯誤處理,不做 JSON 解碼。
+    private func rawResponse(_ method: String, _ path: String,
+                             body: [String: Any]?) async throws -> Data {
+        guard let url = URL(string: base.absoluteString + path) else {
+            throw ClientError.transport("網址組不起來:\(path)")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 30
+        if let body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw ClientError.transport(error.localizedDescription)
+        }
+
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            if let apiError = try? JSONDecoder().decode(APIError.self, from: data) {
+                throw ClientError.api(apiError)
+            }
+            throw ClientError.transport("HTTP \(code)")
+        }
+        return data
+    }
+}
+
+/// 任意 JSON 值 —— 複合工具的步驟參數形狀不固定,不能用具體型別。
+enum JSONValue: Codable, Sendable {
+    case string(String), number(Double), bool(Bool), null
+    indirect case array([JSONValue])
+    indirect case object([String: JSONValue])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? c.decode(Double.self) { self = .number(v) }
+        else if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }
+        else if let v = try? c.decode([String: JSONValue].self) { self = .object(v) }
+        else {
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "無法辨識的 JSON 值")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let v): try c.encode(v)
+        case .number(let v): try c.encode(v)
+        case .string(let v): try c.encode(v)
+        case .array(let v): try c.encode(v)
+        case .object(let v): try c.encode(v)
+        }
+    }
+
+    /// 轉成 JSONSerialization 吃得下的原生型別,供送出時使用。
+    var raw: Any {
+        switch self {
+        case .null: return NSNull()
+        case .bool(let v): return v
+        case .number(let v): return v == v.rounded() ? Int(v) : v
+        case .string(let v): return v
+        case .array(let v): return v.map(\.raw)
+        case .object(let v): return v.mapValues(\.raw)
         }
     }
 }

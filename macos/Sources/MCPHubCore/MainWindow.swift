@@ -18,13 +18,20 @@ struct MainWindow: View {
                     ToolsTab(state: state).tabItem { Label("工具", systemImage: "wrench.and.screwdriver") }
                     LogsTab(state: state).tabItem { Label("記錄", systemImage: "list.bullet.rectangle") }
                     ActionsTab(state: state).tabItem { Label("待確認", systemImage: "checkmark.shield") }
+                    CustomToolsTab(state: state).tabItem {
+                        Label("自訂工具", systemImage: "wrench.and.screwdriver")
+                    }
+                    CompositeToolsTab(state: state).tabItem {
+                        Label("複合工具", systemImage: "square.stack.3d.up")
+                    }
+                    SettingsTab(state: state).tabItem { Label("設定", systemImage: "gearshape") }
                 }
                 .padding(.top, 8)
             default:
                 BackendNotReady(state: state)
             }
         }
-        .frame(minWidth: 620, minHeight: 440)
+        .frame(minWidth: 820, minHeight: 520)
     }
 }
 
@@ -68,12 +75,12 @@ private struct ServersTab: View {
     var body: some View {
         VStack(spacing: 0) {
             if let err = state.lastError {
-                Banner(text: err, kind: .error)
+                Banner(text: err, kind: .error, onDismiss: { state.lastError = nil })
             }
             List {
                 ForEach(state.servers) { s in
                     HStack(spacing: 10) {
-                        StatusDot(server: s)
+                        StatusDot(kind: dotKind(s), help: s.statusDetail.isEmpty ? s.status : s.statusDetail)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(s.name).fontWeight(.medium)
                             Text(detailLine(s))
@@ -106,6 +113,13 @@ private struct ServersTab: View {
         .task { await state.refresh() }
     }
 
+    private func dotKind(_ s: HubClient.Server) -> StatusDot.Kind {
+        guard s.enabled else { return .off }
+        if s.isHealthy { return .ok }
+        if s.isErrored { return .bad }
+        return .warn
+    }
+
     /// 異常時顯示錯誤原因而不是網址 —— 那才是當下需要看到的東西。
     private func detailLine(_ s: HubClient.Server) -> String {
         if s.isErrored && !s.statusDetail.isEmpty { return s.statusDetail }
@@ -136,24 +150,6 @@ private struct ServersTab: View {
             catch { state.lastError = error.localizedDescription }
             await state.refresh()
         }
-    }
-}
-
-private struct StatusDot: View {
-    let server: HubClient.Server
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 9, height: 9)
-            .help(server.statusDetail.isEmpty ? server.status : server.statusDetail)
-    }
-
-    private var color: Color {
-        guard server.enabled else { return .secondary.opacity(0.4) }
-        if server.isHealthy { return .green }
-        if server.isErrored { return .red }
-        return .secondary
     }
 }
 
@@ -394,24 +390,5 @@ private struct ActionsTab: View {
 
     private func reload() {
         Task { await state.refresh() }
-    }
-}
-
-// ── 共用 ──────────────────────────────────────────────────
-private struct Banner: View {
-    enum Kind { case error, info }
-    let text: String
-    let kind: Kind
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: kind == .error ? "exclamationmark.triangle.fill" : "info.circle")
-            Text(text).lineLimit(2).textSelection(.enabled)
-            Spacer()
-        }
-        .font(.caption)
-        .foregroundStyle(kind == .error ? Color.red : Color.secondary)
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(kind == .error ? Color.red.opacity(0.08) : Color.secondary.opacity(0.08))
     }
 }
