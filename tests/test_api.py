@@ -63,14 +63,19 @@ class TestAuth(ApiTest):
         self.assertEqual(r.json()["db_path"], _TMP_DB)   # 確實用臨時 DB
 
     def test_api_disabled_when_no_token_configured(self):
-        # 沒設 token → API 回 503,但網頁管理台照常
+        """
+        沒設 token → API 回 503,但 OAuth callback 仍要能運作。
+
+        callback 是授權伺服器把瀏覽器導回來的端點,不可能帶 token。
+        若它也被擋掉,使用者會卡在授權流程的最後一步而不知道為什麼。
+        """
         original = api.API_TOKEN
         api.API_TOKEN = ""
         try:
             r = self.c.get("/api/v1/servers", headers=AUTH)
             self.assertEqual(r.status_code, 503)
             self.assertEqual(r.json()["error"], "api_disabled")
-            self.assertEqual(self.c.get("/").status_code, 200)
+            self.assertEqual(self.c.get("/oauth/callback?error=x").status_code, 200)
         finally:
             api.API_TOKEN = original
 

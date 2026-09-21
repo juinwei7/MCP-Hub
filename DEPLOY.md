@@ -1,7 +1,7 @@
 # 部署 MCP Hub
 
 Hub 有兩個角色:
-- **管理台**:`gateway.web`,提供網頁介面與給原生 app 用的 JSON API。
+- **後端**:`gateway.web`,提供給原生 app 用的 JSON API 與背景健康檢查。
 - **聚合器**:`gateway.hub_server`,以 **stdio** 被 Claude 啟動,把所有下游工具合併曝露。
 
 兩者共用同一份 `actions.db`。
@@ -43,8 +43,10 @@ claude mcp add my-hub \
 ./start.sh
 ```
 
-建 `.venv` → 裝依賴 → 開管理台(http://localhost:8765),並印出接入指令。
-這是開發時最方便的方式,也是 Linux 目前唯一的選擇(沒有原生 Linux app)。
+建 `.venv` → 裝依賴 → 啟動後端(http://localhost:8765),並印出接入指令。
+
+> **後端本身沒有介面。**網頁管理台已由原生 app 取代,`gateway.web` 現在只提供
+> JSON API。單獨跑它適合開發或除錯,一般使用請用方式 A。
 
 自訂 port:`MCP_HUB_PORT=9000 ./start.sh`
 
@@ -70,8 +72,8 @@ stdio 下游是在**你的機器上**被啟動的,所以它需要的執行環境
 
 ## 安全備註
 
-- 管理台**沒有登入**,靠「只綁 `127.0.0.1`」保護 —— 單人本機用足夠。要開遠端才需要加驗證。
-  JSON API 另有 token 驗證(原生 app 啟動時隨機產生,不落地)。
+- JSON API 需要 token(原生 app 啟動時隨機產生,不落地存檔),且只綁 `127.0.0.1`。
+  要開遠端存取需要另外設計驗證。
 - `.secret_key` 是解開 DB 內密鑰的金鑰,**請單獨備份**;遺失則 `actions.db` 裡的 token 解不回來。
   權限在 macOS / Linux 是 0600,Windows 用 ACL 限制。
 - 匯出的設定含本機絕對路徑(stdio 下游),搬機器可能要改(匯出檔內已有 `_note` 提醒)。

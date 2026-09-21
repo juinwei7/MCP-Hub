@@ -21,6 +21,9 @@ struct HubClient {
         let statusDetail: String
         let toolCount: Int?
         let hasToken: Bool
+        let hasEnv: Bool
+        let command: String
+        let args: [String]
 
         var id: String { slug }
         var isHealthy: Bool { status == "ok" }
@@ -33,6 +36,8 @@ struct HubClient {
             case statusDetail = "status_detail"
             case toolCount = "tool_count"
             case hasToken = "has_token"
+            case hasEnv = "has_env"
+            case command, args
         }
     }
 

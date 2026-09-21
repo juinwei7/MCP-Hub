@@ -187,6 +187,33 @@ extension HubClient {
         }
     }
 
+    // ── 下游的新增 / 編輯 / 刪除 ──────────────────────────
+
+    func createServer(_ body: [String: Any]) async throws -> Server {
+        try await request("POST", "/servers", body: body)
+    }
+
+    func updateServer(_ slug: String, _ body: [String: Any]) async throws -> Server {
+        try await request("PATCH", "/servers/\(escaped(slug))", body: body)
+    }
+
+    func deleteServer(_ slug: String) async throws {
+        try await requestVoid("DELETE", "/servers/\(escaped(slug))")
+    }
+
+    func refreshServer(_ slug: String) async throws -> RefreshResult {
+        try await request("POST", "/servers/\(escaped(slug))/refresh")
+    }
+
+    struct OAuthStart: Decodable, Sendable {
+        let authorizationURL: String
+        enum CodingKeys: String, CodingKey { case authorizationURL = "authorization_url" }
+    }
+
+    func startOAuth(_ slug: String) async throws -> OAuthStart {
+        try await request("POST", "/servers/\(escaped(slug))/oauth/start", body: [:])
+    }
+
     // ── 自訂工具 ──────────────────────────────────────────
 
     func customTools() async throws -> [CustomTool] {

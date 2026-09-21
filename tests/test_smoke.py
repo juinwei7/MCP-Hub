@@ -17,9 +17,10 @@ from tests._env import DB_PATH as _TMP_DB  # noqa: E402
 
 from gateway import store, web, crypto, skills, auth  # noqa: E402
 from mcp.shared.auth import OAuthToken, ProtectedResourceMetadata  # noqa: E402
-from gateway.web import (  # noqa: E402
-    _entry_to_server, _extract_mcp_servers, _parse_tool_form, _parse_composite_form,
-)
+# mcpServers 的解析搬到 api_import(隨網頁管理台一起移除了 web.py 那份)。
+# 表單解析(_parse_tool_form / _parse_composite_form)則被 API 的驗證取代,
+# 測試在 tests/test_api_tools.py。
+from gateway.api_import import _entry_to_server, _extract_mcp_servers  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from starlette.routing import Route  # noqa: E402
 
@@ -246,45 +247,6 @@ class TestParsers(unittest.TestCase):
                                                     "args": ["-m", "gateway.hub_server"]}))
         self.assertIsNone(_entry_to_server("x", {"nonsense": 1}))
 
-    def test_parse_tool_form(self):
-        h, p = _parse_tool_form("n", "d", "GET", "http://x",
-                                '{"X-Key":"1"}', '[{"name":"id"}]')
-        self.assertIn("X-Key", h)
-        self.assertIn("id", p)
-        with self.assertRaises(ValueError):
-            _parse_tool_form("n", "d", "GET", "http://x", "不是JSON", "[]")
-        with self.assertRaises(ValueError):
-            _parse_tool_form("n", "d", "GET", "http://x", "{}", '[{"noname":1}]')
-
-    def test_parse_composite_form(self):
-        p, s = _parse_composite_form(
-            '[{"name":"week","type":"string"}]',
-            '[{"id":"digest","tool":"orgpulse__get_my_weekly_digest","args":{"week":"{{input.week}}"}}]',
-            "collect",
-        )
-        self.assertIn("week", p)
-        self.assertIn("digest", s)
-        with self.assertRaises(ValueError):
-            _parse_composite_form("{}", "[]", "collect")
-        with self.assertRaises(ValueError):
-            _parse_composite_form("[]", '[{"tool":"x"}]', "collect")
-
-    def test_skill_package(self):
-        import io
-        import zipfile
-        tool = {
-            "name": "weekly_report",
-            "description": "產生週報",
-            "params": [{"name": "week", "type": "string", "required": False, "description": "週次"}],
-        }
-        markdown = skills.starter_skill(tool)
-        self.assertIn("name: weekly-report", markdown)
-        skills.validate_skill_markdown(markdown, "weekly-report")
-        with zipfile.ZipFile(io.BytesIO(skills.skill_zip(tool["name"], markdown))) as archive:
-            self.assertEqual(archive.namelist(), ["weekly-report/SKILL.md"])
-            self.assertEqual(archive.read("weekly-report/SKILL.md").decode(), markdown)
-
-
 class TestSkillWorkbench(unittest.IsolatedAsyncioTestCase):
     async def test_inspect_validate_and_save(self):
         store.upsert_composite_tool(
@@ -327,18 +289,30 @@ class TestWebPages(unittest.TestCase):
         store.delete_composite_tool("page_report")
         cls.client.__exit__(None, None, None)
 
-    def test_pages_return_200(self):
-        for path in ["/", "/servers/add", "/tools", "/tools/add", "/composites", "/composites/add",
-                     "/composites/page_report", "/composites/page_report/skill", "/import",
-                     "/directory", "/registry", "/connect", "/logs", "/guide",
-                     "/servers/pagesrv", "/category?name=" + "頁面類"]:
+    def test_html_admin_is_gone(self):
+        """
+        網頁管理台已由原生 app 取代。這些路徑不該再存在 ——
+        留著會讓人以為還有第二套介面可用,而它不再被維護。
+        """
+        for path in ["/", "/servers/add", "/tools", "/tools/add", "/composites",
+                     "/import", "/directory", "/registry", "/connect", "/logs",
+                     "/guide", "/category", "/config/export"]:
             with self.subTest(path=path):
-                r = self.client.get(path)
-                self.assertEqual(r.status_code, 200, f"{path} -> {r.status_code}")
+                self.assertEqual(self.client.get(path).status_code, 404,
+                                 f"{path} 應該已經移除")
 
-    def test_config_export(self):
-        r = self.client.get("/config/export")
+    def test_oauth_callback_still_serves_html(self):
+        """
+        唯一保留的 HTML 端點:授權伺服器導回的是瀏覽器,不能回 JSON。
+        """
+        r = self.client.get("/oauth/callback?error=access_denied")
         self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r.headers["content-type"])
+        self.assertIn("access_denied", r.text)
+
+    def test_api_still_works(self):
+        from tests._env import AUTH
+        self.assertEqual(self.client.get("/api/v1/servers", headers=AUTH).status_code, 200)
 
 
 class TestRouteHygiene(unittest.TestCase):

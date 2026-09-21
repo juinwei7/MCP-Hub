@@ -71,6 +71,9 @@ private struct BackendNotReady: View {
 private struct ServersTab: View {
     @ObservedObject var state: AppState
     @State private var busy: String?
+    @State private var editing: HubClient.Server?
+    @State private var creating = false
+    @State private var deleting: HubClient.Server?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -91,7 +94,20 @@ private struct ServersTab: View {
                         if busy == s.slug {
                             ProgressView().controlSize(.small)
                         } else {
-                            Button("檢查") { check(s) }.buttonStyle(.borderless)
+                            Menu {
+                                Button("編輯…") { editing = s }
+                                Button("重新檢查") { check(s) }
+                                Button("重抓工具") { refresh(s) }
+                                if s.authType == "oauth" {
+                                    Button("OAuth 授權…") { startOAuth(s) }
+                                }
+                                Divider()
+                                Button("刪除…", role: .destructive) { deleting = s }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
                         }
                         Toggle("", isOn: Binding(
                             get: { s.enabled },
@@ -106,11 +122,67 @@ private struct ServersTab: View {
                 Text(summary()).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("全部檢查") { Task { await state.checkAll() } }
-                Button("管理台") { state.openAdmin() }
+                Button {
+                    creating = true
+                } label: {
+                    Label("新增下游", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
             }
             .padding(8)
         }
         .task { await state.refresh() }
+        .sheet(isPresented: $creating) {
+            ServerEditor(state: state, existing: nil) { _ in creating = false }
+        }
+        .sheet(item: $editing) { server in
+            ServerEditor(state: state, existing: server) { _ in editing = nil }
+        }
+        .confirmationDialog("確定要刪除「\(deleting?.name ?? "")」?",
+                            isPresented: .constant(deleting != nil)) {
+            Button("刪除", role: .destructive) { performDelete() }
+            Button("取消", role: .cancel) { deleting = nil }
+        } message: {
+            Text("連同它的工具快取與 OAuth 授權一起刪除。Claude 會立刻看不到這些工具。")
+        }
+    }
+
+    private func refresh(_ s: HubClient.Server) {
+        Task {
+            busy = s.slug
+            defer { busy = nil }
+            do { _ = try await state.client.refreshServer(s.slug) }
+            catch { state.lastError = error.localizedDescription }
+            await state.refresh()
+        }
+    }
+
+    private func startOAuth(_ s: HubClient.Server) {
+        Task {
+            busy = s.slug
+            defer { busy = nil }
+            do {
+                let start = try await state.client.startOAuth(s.slug)
+                // 授權要在瀏覽器完成 —— callback 由後端在 8765 接收
+                if let url = URL(string: start.authorizationURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            } catch {
+                state.lastError = error.localizedDescription
+            }
+        }
+    }
+
+    private func performDelete() {
+        guard let s = deleting else { return }
+        deleting = nil
+        Task {
+            busy = s.slug
+            defer { busy = nil }
+            do { try await state.client.deleteServer(s.slug) }
+            catch { state.lastError = error.localizedDescription }
+            await state.refresh()
+        }
     }
 
     private func dotKind(_ s: HubClient.Server) -> StatusDot.Kind {

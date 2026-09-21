@@ -18,7 +18,8 @@ from unittest import mock
 
 from tests._env import DB_PATH as _TMP_DB  # noqa: E402
 
-from gateway import web, crypto, store  # noqa: E402
+# _claude_config_paths 隨網頁管理台移除而搬到 api_import
+from gateway import api_import, crypto, store  # noqa: E402
 
 
 def setUpModule():
@@ -38,7 +39,7 @@ class TestClaudeConfigPaths(unittest.TestCase):
         """
         with mock.patch.object(sys, "platform", platform), \
              mock.patch.dict(os.environ, env or {}, clear=False):
-            return [str(p).replace("\\", "/") for p in web._claude_config_paths()]
+            return [str(p).replace("\\", "/") for p in api_import._claude_config_paths()]
 
     def test_macos(self):
         paths = self.paths_on("darwin")
@@ -58,7 +59,7 @@ class TestClaudeConfigPaths(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "APPDATA"}
         with mock.patch.object(sys, "platform", "win32"), \
              mock.patch.dict(os.environ, env, clear=True):
-            paths = [str(p) for p in web._claude_config_paths()]
+            paths = [str(p) for p in api_import._claude_config_paths()]
         self.assertTrue(paths, "至少要留下 ~/.claude.json")
 
     def test_linux(self):
@@ -75,10 +76,10 @@ class TestClaudeConfigPaths(unittest.TestCase):
 
     def test_import_claude_survives_missing_files(self):
         # 路徑指到不存在的檔案時要安靜跳過,不是拋例外
-        with mock.patch.object(web, "_claude_config_paths",
+        with mock.patch.object(api_import, "_claude_config_paths",
                                return_value=[Path("/nonexistent/a.json")]):
-            resp = web.import_claude()
-        self.assertEqual(resp.status_code, 303)
+            result = api_import.import_claude_config()
+        self.assertEqual(result["added"], [])   # 檔案不存在就是沒東西可匯入,不是錯誤
 
 
 class TestSecretKeyProtection(unittest.TestCase):
