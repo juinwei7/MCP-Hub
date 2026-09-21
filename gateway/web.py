@@ -65,6 +65,9 @@ app = FastAPI(title="MCP Hub 管理台", lifespan=lifespan)
 from gateway import api as _api   # noqa: E402  放在 app 之後,因為 api 需要 web 的錯誤解讀
 app.include_router(_api.router)
 app.include_router(_api.guarded)
+from gateway import api_tools as _api_tools, api_import as _api_import   # noqa: E402
+app.include_router(_api_tools.router)
+app.include_router(_api_import.router)
 _api.install_error_handler(app)
 
 
