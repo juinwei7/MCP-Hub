@@ -12,6 +12,7 @@
     ./.venv/bin/python -m gateway.web   → http://localhost:8765
 """
 
+import os
 import sys
 import json
 import asyncio
@@ -41,6 +42,8 @@ async def _health_loop():
                 store.set_server_status(srv["slug"], status, detail)
                 if tools is not None:
                     store.cache_tools(srv["slug"], [(t.name, t.description, t.inputSchema) for t in tools])
+                _api.publish("server_status",
+                             {"slug": srv["slug"], "status": status, "detail": detail})
         except Exception:
             pass
         await asyncio.sleep(HEALTH_INTERVAL)
@@ -56,6 +59,13 @@ async def lifespan(app):
 
 
 app = FastAPI(title="MCP Hub 管理台", lifespan=lifespan)
+
+# 給原生 client 用的 JSON API(specs/001-json-api)。掛在同一個 app 同一個 port,
+# 因為 OAuth 的 redirect_uri 綁在這裡,且 ConsoleOAuthFlow 的 state 表是行程內的。
+from gateway import api as _api   # noqa: E402  放在 app 之後,因為 api 需要 web 的錯誤解讀
+app.include_router(_api.router)
+app.include_router(_api.guarded)
+_api.install_error_handler(app)
 
 
 def _tool_name_conflict(name, *, allow_existing=None):
@@ -241,16 +251,35 @@ def import_config(config: str = Form("")):
     return RedirectResponse("/?msg=" + _u.quote(f"已新增 {n} 台下游"), status_code=303)
 
 
+def _claude_config_paths():
+    """
+    各平台的 Claude 設定檔位置。
+
+    原本只查 macOS 的路徑,所以在 Windows / Linux 上這個功能會安靜地回報
+    「找到 0 台」—— 使用者不會知道是路徑找錯,只會以為自己沒有設定。
+    `~/.claude.json`(Claude Code)三個平台都一樣。
+    """
+    # 三個分支一律看 sys.platform,不混用 os.name —— 測試要模擬平台時,
+    # 動到 os.name 會讓 pathlib 拒絕在非 Windows 上建 WindowsPath,整個測不了。
+    home = Path.home()
+    paths = []
+    if sys.platform == "darwin":
+        paths.append(home / "Library/Application Support/Claude/claude_desktop_config.json")
+    elif sys.platform.startswith("win"):
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            paths.append(Path(appdata) / "Claude" / "claude_desktop_config.json")
+    else:
+        paths.append(home / ".config/Claude/claude_desktop_config.json")
+    paths.append(home / ".claude.json")
+    return paths
+
+
 @app.post("/servers/import_claude")
 def import_claude():
     """讀取現有的 Claude Desktop / Claude Code 設定,把裡面的 mcpServers 匯入。"""
-    home = Path.home()
-    candidates = [
-        home / "Library/Application Support/Claude/claude_desktop_config.json",
-        home / ".claude.json",
-    ]
     entries = {}
-    for path in candidates:
+    for path in _claude_config_paths():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -546,13 +575,8 @@ def _oauth_error_hint(err):
 
 
 def _exception_details(err):
-    if err is None:
-        return ""
-    nested = getattr(err, "exceptions", None)
-    if nested:
-        parts = [_exception_details(child) for child in nested]
-        return " | ".join(dict.fromkeys(part for part in parts if part))
-    return str(err)
+    # 實作已移到 hub.py —— 錯誤是在那裡產生的,健檢與管理台要用同一套解讀(憲法 B2)。
+    return hub.exception_details(err)
 
 
 @app.get("/oauth/callback", response_class=HTMLResponse)
@@ -1191,4 +1215,9 @@ def reject(action_id: str):
 
 if __name__ == "__main__":
     import uvicorn
+    ok, note = _api.preflight(HOST, PORT)
+    if note:
+        print(note, file=sys.stderr)
+    if not ok:
+        sys.exit(1)
     uvicorn.run(app, host=HOST, port=PORT)

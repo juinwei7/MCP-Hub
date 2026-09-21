@@ -9,17 +9,11 @@
 會把 DB 指到臨時檔(MCP_HUB_DB),不會動到正式 actions.db。
 覆蓋:store CRUD、解析 helper、每個網頁 GET 200、路由不互相遮蔽。
 """
-import os
 import json
-import tempfile
 import unittest
 
-# 必須在 import gateway 之前設好,才會用臨時 DB + 臨時金鑰
-_TMP_DB = tempfile.mkstemp(prefix="mcphub_test_", suffix=".db")[1]
-_TMP_KEY = tempfile.mkstemp(prefix="mcphub_key_", suffix="")[1]
-os.remove(_TMP_KEY)   # 讓 crypto 自己產生
-os.environ["MCP_HUB_DB"] = _TMP_DB
-os.environ["MCP_HUB_KEY"] = _TMP_KEY
+# 必須在 import gateway 之前,臨時 DB / 金鑰的設定集中在這裡(見 tests/_env.py)
+from tests._env import DB_PATH as _TMP_DB  # noqa: E402
 
 from gateway import store, web, crypto, skills, auth  # noqa: E402
 from mcp.shared.auth import OAuthToken, ProtectedResourceMetadata  # noqa: E402
@@ -32,14 +26,8 @@ from starlette.routing import Route  # noqa: E402
 
 def setUpModule():
     store.init_db()
-
-
-def tearDownModule():
-    for f in (_TMP_DB, _TMP_KEY):
-        try:
-            os.remove(f)
-        except OSError:
-            pass
+    # 臨時檔的清除由 tests/_env.py 的 atexit 負責 —— 不能在這裡刪,
+    # 那會在別的測試模組還在用同一個 DB 時就把它砍掉。
 
 
 class TestStore(unittest.TestCase):

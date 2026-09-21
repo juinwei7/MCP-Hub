@@ -488,10 +488,13 @@ def log_call(server_slug, tool, arguments, status, duration_ms=None, error=None)
         )
 
 
-def list_logs(limit=100, offset=0):
+def list_logs(limit=100, offset=0, errors_only=False):
+    q = "SELECT * FROM call_logs"
+    if errors_only:
+        q += " WHERE status = 'error'"   # 與 count_logs 的條件必須一致,否則分頁總數對不上
+    q += " ORDER BY id DESC LIMIT ? OFFSET ?"
     with _db() as c:
-        rows = c.execute("SELECT * FROM call_logs ORDER BY id DESC LIMIT ? OFFSET ?",
-                         (limit, offset)).fetchall()
+        rows = c.execute(q, (limit, offset)).fetchall()
     return [dict(r) for r in rows]
 
 
