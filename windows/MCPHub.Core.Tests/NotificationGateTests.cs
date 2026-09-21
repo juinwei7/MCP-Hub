@@ -155,7 +155,7 @@ public class NotificationGateTests
         var result = gate.Evaluate(new[] { Action("a1") },
                                    new[] { Server("s1", status: "error") });
         Assert.Equal(2, result.Count);
-        Assert.Single(result.Where(i => i.ActionId is not null));
+        Assert.Single(result, i => i.ActionId is not null);
     }
 
     [Fact]
