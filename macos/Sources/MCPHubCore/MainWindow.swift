@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 主視窗 —— 日常管理不必再開瀏覽器。
 ///
-/// 設計原則(Spec 003 §3):顯示需要注意的事而非所有資訊;每個動作都有明確結果;
+/// 三個設計原則:顯示需要注意的事而非所有資訊;每個動作都有明確結果;
 /// 把「下游連不上」當常態處理,而不是例外。
 
 struct MainWindow: View {
@@ -28,7 +28,7 @@ struct MainWindow: View {
     }
 }
 
-/// 後端沒就緒時要說清楚原因,不是空白或永遠轉圈圈(P-2)。
+/// 後端沒就緒時要說清楚原因,不是空白或永遠轉圈圈。
 private struct BackendNotReady: View {
     @ObservedObject var state: AppState
 
@@ -106,7 +106,7 @@ private struct ServersTab: View {
         .task { await state.refresh() }
     }
 
-    /// 異常時顯示錯誤原因而不是網址 —— 那才是當下需要看到的東西(P-3)。
+    /// 異常時顯示錯誤原因而不是網址 —— 那才是當下需要看到的東西。
     private func detailLine(_ s: HubClient.Server) -> String {
         if s.isErrored && !s.statusDetail.isEmpty { return s.statusDetail }
         let count = s.toolCount ?? 0
@@ -166,7 +166,7 @@ private struct ToolsTab: View {
     @State private var loading = false
     @State private var error: String?
 
-    /// 61 個工具全列出來只會讓人找不到重點,所以預設就給搜尋(P-1)。
+    /// 61 個工具全列出來只會讓人找不到重點,所以預設就給搜尋。
     private var shown: [HubClient.Tool] {
         guard !query.isEmpty else { return tools }
         let q = query.lowercased()
@@ -316,7 +316,7 @@ private struct LogsTab: View {
 
             Divider()
             HStack {
-                // 558 筆且持續成長 —— 一定要分頁(約束 C-2)
+                // 558 筆且持續成長 —— 一定要分頁
                 Button("上一頁") { current -= 1; reload() }.disabled(current <= 1)
                 Text("第 \(page?.page ?? current) / \(page?.pages ?? 1) 頁").font(.caption)
                 Button("下一頁") { current += 1; reload() }
@@ -387,7 +387,7 @@ private struct ActionsTab: View {
         .task { reload() }
     }
 
-    /// 核准只改狀態,實際執行發生在 hub_server 程序(Spec 001 §7.4)。
+    /// 核准只改狀態,實際執行發生在 hub_server 程序。
     private func decide(_ a: HubClient.Action, _ approve: Bool) {
         Task { await state.decide(a.id, approve: approve) }
     }

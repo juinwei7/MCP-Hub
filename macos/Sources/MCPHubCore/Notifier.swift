@@ -7,8 +7,8 @@ import UserNotifications
 /// 也不會有人知道。通知讓 Hub 能在你沒看著它的時候引起你注意。
 ///
 /// 兩個設計重點:
-///   1. 不重複通知(約束 C-1)—— 反覆跳通知會讓人直接關掉通知,結果比沒有更糟
-///   2. 沒有 bundle 就靜默跳過(約束 C-2)—— UNUserNotificationCenter 在未打包的
+///   1. 不重複通知—— 反覆跳通知會讓人直接關掉通知,結果比沒有更糟
+///   2. 沒有 bundle 就靜默跳過—— UNUserNotificationCenter 在未打包的
 ///      執行檔上會拋 NSException,而 Swift 攔不住,只能事前擋下來
 @MainActor
 final class Notifier: NSObject {
@@ -22,10 +22,10 @@ final class Notifier: NSObject {
     let available: Bool = Bundle.main.bundleIdentifier != nil
 
     private(set) var authorized = false
-    /// 「該不該通知」的規則抽在 NotificationGate,可單獨測試(約束 C-1)。
+    /// 「該不該通知」的規則抽在 NotificationGate,可單獨測試。
     private var gate = NotificationGate()
 
-    /// 通知送不出去時要讓呼叫端知道,好改用選單列提示(約束 C-3)。
+    /// 通知送不出去時要讓呼叫端知道,好改用選單列提示。
     var canNotify: Bool { available && authorized }
 
     /// 核准 / 拒絕的實際動作由 AppState 提供 —— 通知層不碰業務邏輯。

@@ -1,8 +1,8 @@
 import Foundation
 
-/// Spec 001 的 JSON API client。
+/// Hub 後端 JSON API 的 client。
 ///
-/// 只負責傳輸與解碼 —— 任何「要做什麼」的判斷都留在 Python 端(憲法 A4)。
+/// 只負責傳輸與解碼 —— 任何「要做什麼」的判斷都留在 Python 端。
 /// Windows 版之後會有一份對等的實作,共用同一組端點。
 struct HubClient {
     let token: String
@@ -221,7 +221,7 @@ struct HubClient {
 
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else {
-            // 錯誤一律是扁平的 {"error", "message"}(Spec 001 §4.2)
+            // 錯誤一律是扁平的 {"error", "message"}
             if let apiError = try? JSONDecoder().decode(APIError.self, from: data) {
                 throw ClientError.api(apiError)
             }

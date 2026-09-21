@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spec 002 驗收 —— 對應 specs/002-macos-shell/acceptance.md
+# macOS app 的生命週期驗收
 #
 # 重點不是介面,是「子程序有沒有被管好」。每一條都實際起 app、實際殺程序、
 # 實際數殘留,不是看起來正常就算。
@@ -84,7 +84,7 @@ fi
 
 [ "$(backends)" = "1" ] && ok "A3 恰好一個後端程序" || bad "A3 後端程序數為 $(backends)"
 
-# ── B. 正常結束不留孤兒(Spec 002 核心)──────────────────
+# ── B. 正常結束不留孤兒(本腳本存在的主要理由)──────────
 say "B — 正常結束"
 kill -TERM "$APP_PID" 2>/dev/null
 if wait_gone; then

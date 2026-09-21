@@ -1,9 +1,9 @@
 """
-JSON API 測試 —— 對應 specs/001-json-api/acceptance.md。
+JSON API 測試。
 
 跑法:./.venv/bin/python -m unittest tests.test_api -v
 
-用臨時 DB / 金鑰,不碰正式 actions.db(憲法 C2)。
+用臨時 DB / 金鑰,不碰正式 actions.db。
 每個端點至少兩個案例:成功路徑,以及最有意義的失敗路徑。
 """
 import json
@@ -60,10 +60,10 @@ class TestAuth(ApiTest):
         r = self.c.get("/api/v1/health")
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.json()["ready"])
-        self.assertEqual(r.json()["db_path"], _TMP_DB)   # G1:確實用臨時 DB
+        self.assertEqual(r.json()["db_path"], _TMP_DB)   # 確實用臨時 DB
 
     def test_api_disabled_when_no_token_configured(self):
-        # B5:沒設 token → API 回 503,但網頁管理台照常(憲法 B1)
+        # 沒設 token → API 回 503,但網頁管理台照常
         original = api.API_TOKEN
         api.API_TOKEN = ""
         try:
@@ -75,7 +75,7 @@ class TestAuth(ApiTest):
             api.API_TOKEN = original
 
 
-# ── D. 密鑰不得外洩(憲法 E3)────────────────────────────
+# ── D. 密鑰不得外洩────────────────────────────
 class TestSecretsNeverLeak(ApiTest):
     def test_bearer_token_not_in_any_response(self):
         self.mkserver("leaky", auth_type="bearer", bearer_token="super-secret-value")
@@ -96,7 +96,7 @@ class TestSecretsNeverLeak(ApiTest):
         self.assertTrue(self.c.get("/api/v1/servers/envy", headers=AUTH).json()["has_env"])
 
     def test_secret_encrypted_at_rest(self):
-        # D3:DB 內必須是密文
+        # DB 內必須是密文
         self.mkserver("enc", auth_type="bearer", bearer_token="plain-token-xyz")
         with open(_TMP_DB, "rb") as f:
             raw = f.read()
@@ -110,7 +110,7 @@ class TestServers(ApiTest):
         rows = self.c.get("/api/v1/servers", headers=AUTH).json()
         row = next(r for r in rows if r["slug"] == "listed")
         self.assertIn("tool_count", row)
-        self.assertIsInstance(row["enabled"], bool)     # 7.6:0/1 → 布林
+        self.assertIsInstance(row["enabled"], bool)     # 0/1 → 布林
         self.assertEqual(row["status"], "unknown")
 
     def test_get_includes_tools(self):
@@ -120,7 +120,7 @@ class TestServers(ApiTest):
         self.assertEqual(len(got["tools"]), 1)
         t = got["tools"][0]
         self.assertEqual(t["name"], "alpha")
-        self.assertIsInstance(t["input_schema"], dict)   # 7.6:JSON 字串 → 物件
+        self.assertIsInstance(t["input_schema"], dict)   # JSON 字串 → 物件
         self.assertIsInstance(t["enabled"], bool)
 
     def test_get_missing_returns_404(self):
@@ -153,7 +153,7 @@ class TestServers(ApiTest):
         self.assertEqual(r.json()["error"], "invalid_json")
 
     def test_patch_preserves_omitted_token(self):
-        # D6:編輯時沒帶 bearer_token,原值必須保留
+        # 編輯時沒帶 bearer_token,原值必須保留
         self.mkserver("keepme", auth_type="bearer", bearer_token="keep-this-token")
         r = self.c.patch("/api/v1/servers/keepme", headers=AUTH, json={"name": "改名了"})
         self.assertEqual(r.status_code, 200)
@@ -177,7 +177,7 @@ class TestServers(ApiTest):
         self.assertEqual(self.c.delete("/api/v1/servers/ghost", headers=AUTH).status_code, 404)
 
     def test_enabled_takes_explicit_value_not_toggle(self):
-        # 7.3:重複送同一個值必須冪等,不是每次反轉
+        # 重複送同一個值必須冪等,不是每次反轉
         self.mkserver("switch")
         for _ in range(2):
             r = self.c.patch("/api/v1/servers/switch", headers=AUTH, json={})
@@ -246,7 +246,7 @@ class TestLogs(ApiTest):
         self.assertEqual(len(r["rows"]), 3)
         self.assertGreaterEqual(r["total"], 7)
         self.assertGreaterEqual(r["pages"], 3)
-        self.assertIsInstance(r["rows"][0]["arguments"], dict)   # 7.6:JSON 字串 → 物件
+        self.assertIsInstance(r["rows"][0]["arguments"], dict)   # JSON 字串 → 物件
 
         only = self.c.get("/api/v1/logs?errors_only=true&per_page=100", headers=AUTH).json()
         self.assertTrue(all(row["status"] == "error" for row in only["rows"]))
@@ -288,7 +288,7 @@ class TestActions(ApiTest):
         self.assertEqual(r.json()["status"], store.REJECTED)
 
     def test_second_decision_conflicts(self):
-        # 7.5:store.decide 不回報 rowcount,API 必須自己擋住重複決定
+        # store.decide 不回報 rowcount,API 必須自己擋住重複決定
         aid = store.create_action("twice__me", {})
         self.c.post(f"/api/v1/actions/{aid}/decision", headers=AUTH, json={"approve": True})
         r = self.c.post(f"/api/v1/actions/{aid}/decision", headers=AUTH, json={"approve": False})
@@ -364,7 +364,7 @@ class TestHealthChecks(ApiTest):
         self.assertTrue(detail.strip(), "錯誤訊息不可為空")
 
 
-# ── E. port 防護(約束 C-1)───────────────────────────────
+# ── E. port 防護───────────────────────────────
 class TestPreflight(unittest.TestCase):
     def test_occupied_port_is_refused(self):
         import socket
@@ -471,7 +471,7 @@ class TestEvents(ApiTest):
         self.assertIn("action_decided", events)
 
 
-# ── H. 未繞過 store 層(憲法 A1)──────────────────────────
+# ── H. 未繞過 store 層──────────────────────────
 class TestLayering(unittest.TestCase):
     def test_api_does_not_touch_sqlite_directly(self):
         import inspect

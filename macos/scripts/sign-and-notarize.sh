@@ -4,10 +4,10 @@
 # 為什麼需要:
 #   1. 對方下載後不會看到「無法驗證開發者」而打不開
 #   2. 系統通知與開機自動啟動都要求穩定可驗證的簽章身分 ——
-#      ad-hoc 簽章沒有 Team ID,macOS 一律拒絕(見 spec 004 的阻塞)
+#      ad-hoc 簽章沒有 Team ID,macOS 一律拒絕
 #
 # 需要 Apple Developer 帳號(年費 US$99)。沒有憑證時這個腳本會明確說出缺什麼,
-# 而不是失敗得莫名其妙(約束 C-4)。
+# 而不是失敗得莫名其妙。
 #
 # 跑法:
 #   NOTARY_PROFILE=<keychain 設定檔名> scripts/sign-and-notarize.sh "build/MCP Hub.app"

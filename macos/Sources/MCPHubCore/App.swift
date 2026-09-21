@@ -4,7 +4,7 @@ import SwiftUI
 /// MCP Hub 的 macOS 外殼 —— app 狀態、視窗、生命週期。
 ///
 /// 職責:啟動並監督 Python 後端、在選單列顯示狀態、提供一個最小視窗。
-/// 實際的管理畫面在 Spec 003;這一版只證明外殼與後端打得通。
+/// 主視窗的實作在 MainWindow.swift。
 
 @MainActor
 final class AppState: ObservableObject {
@@ -123,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installSignalHandlers()
     }
 
-    /// app 結束時一定要把子程序收掉 —— 這是 Spec 002 存在的主要理由。
+    /// app 結束時一定要把子程序收掉 —— 這是整個外殼最重要的職責。
     func applicationWillTerminate(_ notification: Notification) {
         state.shutdown()
     }

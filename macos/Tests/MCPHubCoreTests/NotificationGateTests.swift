@@ -1,7 +1,7 @@
 import XCTest
 @testable import MCPHubCore
 
-/// 對應 Spec 004 約束 C-1:不重複通知。
+/// 通知的去重規則:同一件事不重複通知。
 ///
 /// 這些規則不能靠「盯著螢幕看通知有沒有跳」來驗證 —— 那既不可重複、也測不到
 /// 「第二次不該跳」這種否定條件。所以決策邏輯特意與系統 API 分開。
@@ -54,7 +54,7 @@ final class NotificationGateTests: XCTestCase {
         XCTAssertEqual(first[0].actionID, "a1")
         XCTAssertEqual(first[0].body, "srv__drop_table")
 
-        // 同一筆再評估一次不該再通知(約束 C-1)
+        // 同一筆再評估一次不該再通知
         let second = gate.evaluate(actions: [action("a1", "srv__drop_table")], servers: [])
         XCTAssertTrue(second.isEmpty, "同一筆票券不該重複通知")
     }

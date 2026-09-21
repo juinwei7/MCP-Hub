@@ -20,7 +20,7 @@ DB_PATH = Path(os.environ.get("MCP_HUB_DB") or (Path(__file__).parent.parent / "
 # 拿到 DB 但沒拿到這把金鑰 → 解不開密鑰欄位。可用 MCP_HUB_KEY 覆寫。
 SECRET_KEY_PATH = Path(os.environ.get("MCP_HUB_KEY") or (DB_PATH.parent / ".secret_key"))
 
-# JSON API 的存取 token(給原生 client 用,見 specs/001-json-api)。
+# JSON API 的存取 token(給原生 client 用)。
 # 沒設就等於不開放 API —— 網頁管理台照常運作,但 /api/* 一律拒絕。
 # 由原生 app 在啟動後端子程序時隨機產生並以環境變數傳入,不落地存檔。
 API_TOKEN = os.environ.get("MCP_HUB_API_TOKEN", "")

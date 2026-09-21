@@ -3,7 +3,7 @@ JSON API —— 給原生 client(macOS / Windows app)用的介面。
 
 職責只有三件事:驗證請求、把 HTTP 參數轉成既有函式的呼叫、把結果序列化成 JSON。
 **不含任何業務邏輯** —— 一律呼叫 store / hub / auth 既有的函式,與網頁管理台走同一條路。
-規格見 specs/001-json-api/。
+設計決策見本檔各段註解。
 
 與網頁管理台掛在同一個 FastAPI app、同一個 port,原因有二:
   1. OAuth 的 redirect_uri 綁在 8765,而 callback 由 web.py 提供;拆成兩個程序會把
@@ -33,7 +33,7 @@ def install_error_handler(app):
     把 API 的錯誤攤平成 {"error", "message"},不要 FastAPI 預設的 {"detail": {...}} 巢狀。
 
     只處理 detail 是我們自己那個形狀的情況,其餘一律交回預設行為 —— 不能影響
-    網頁管理台既有的錯誤處理(憲法 B1)。
+    網頁管理台既有的錯誤處理。
     """
     from fastapi.exception_handlers import http_exception_handler
     from fastapi.responses import JSONResponse
@@ -296,7 +296,7 @@ def set_enabled(slug: str, payload: dict):
     _get_server_or_404(slug)
     if "enabled" not in payload:
         _fail(400, "invalid_request", "必須提供 enabled。")
-    # 明確值而非 toggle:兩個 client 同時 toggle 會互相抵銷(憲法 A5)。
+    # 明確值而非 toggle:兩個 client 同時 toggle 會互相抵銷。
     store.set_server_enabled(slug, bool(payload["enabled"]))
     publish("server_changed", {"slug": slug})
     return _server_out(store.get_server(slug), store.count_tools(slug))
@@ -430,7 +430,7 @@ def decide_action(action_id: str, payload: dict):
 # 而且自動重連是協定內建的。
 #
 # 已知限制:hub_server 是獨立程序,它寫入的呼叫記錄不會觸發這裡的廣播。
-# client 需要時自行重新查詢補足(規格 §6 未決事項)。
+# client 需要時自行重新查詢補足。
 _subscribers = set()
 
 

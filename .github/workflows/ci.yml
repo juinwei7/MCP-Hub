@@ -1,0 +1,142 @@
+name: CI
+
+# 目的:讓每次 push 都在三個平台上實際執行驗證。
+#
+# 在此之前,所有驗證都只在一台 macOS 機器上跑過 —— 跨平台修正的三個
+# Windows 缺陷,程式碼一行都沒在 Windows 上執行過,驗收紀錄只能誠實寫
+# 「待 Windows 機器驗證」。這份 workflow 就是把那些項目變成自動驗證。
+#
+# 不需要任何 secret,fork 後可直接執行。
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# 同一分支重複推送時,取消還在跑的舊 run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 後端:三平台跑同一套測試 ────────────────────────────
+  # 這是最重要的 job。Windows 的格子讓跨平台修正第一次真的被執行。
+  backend:
+    name: 後端 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false   # 一個平台失敗不該遮住其他平台的結果
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # 刻意不開快取:要驗證的就是「從 requirements.txt 從零安裝」能不能成。
+          # jinja2 那個缺陷就是因為開發機剛好裝過才一直沒被發現。
+
+      - name: 從零安裝依賴
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 確認所有模組可匯入
+        # 比測試更早失敗、訊息更直接:缺依賴的話這一步就會擋下來
+        run: python -c "import gateway.web, gateway.api, gateway.store, gateway.auth, gateway.hub, gateway.pool, gateway.crypto"
+
+      - name: 全套測試
+        run: python -m unittest discover -s tests -v
+
+      - name: 金鑰保護實機驗證
+        # 單元測試只驗證「選對分支」;這一步問作業系統實際開放給誰。
+        # POSIX 檢查權限位元,Windows 解析 icacls 的輸出。
+        run: python scripts/verify_key_protection.py
+
+  # ── macOS app:Swift 測試與生命週期驗收 ────────────────
+  macos-app:
+    name: macOS app
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 準備後端環境
+        # 生命週期驗收會實際啟動 gateway.web,需要可用的 .venv
+        run: |
+          python -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+
+      - name: Swift 版本
+        run: swift --version
+
+      - name: 建置
+        working-directory: macos
+        run: swift build
+
+      - name: Swift 單元測試
+        # NotificationGate 的去重規則 —— 這些是 Windows 版可以直接移植的部分
+        working-directory: macos
+        run: swift test
+
+      - name: app 生命週期驗收
+        # 實際起 app、殺程序、數殘留。孤兒程序是這個專案真實發生過的問題。
+        working-directory: macos
+        run: ./scripts/acceptance.sh
+
+      - name: 殘留程序檢查
+        # 驗收腳本自己會清,但再確認一次 —— CI 環境的程序行為可能不同
+        if: always()
+        run: |
+          if pgrep -f "gateway.web" > /dev/null; then
+            echo "::error::驗收結束後仍有 gateway.web 殘留"
+            pgrep -fl "gateway.web"
+            exit 1
+          fi
+          echo "無殘留程序"
+
+  # ── 自足 bundle:驗證打包路徑 ──────────────────────────
+  bundle:
+    name: 自足 bundle
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 建置並內附後端
+        # 這一步會下載獨立 runtime、從零 pip install、驗證內附的 gateway 可匯入。
+        # jinja2 那個缺陷就是在這條路徑上現形的。
+        working-directory: macos
+        run: make dist
+
+      - name: 確認 bundle 自足
+        working-directory: macos
+        run: |
+          APP="build/MCP Hub.app"
+          BACKEND="$APP/Contents/Resources/backend"
+
+          test -x "$BACKEND/bin/python3" || { echo "::error::找不到內附的 Python"; exit 1; }
+          test -d "$BACKEND/gateway/templates" || { echo "::error::找不到模板"; exit 1; }
+
+          COUNT=$(ls "$BACKEND/gateway/templates"/*.html | wc -l | tr -d ' ')
+          echo "模板數:$COUNT"
+          test "$COUNT" -ge 25 || { echo "::error::模板數不足"; exit 1; }
+
+          # 用內附的 Python 匯入,不能靠 runner 上的任何東西
+          PYTHONPATH="$BACKEND" "$BACKEND/bin/python3" -c "import gateway.web, gateway.api"
+          echo "bundle 自足性確認"
+
+      - name: 體積
+        working-directory: macos
+        run: du -sh "build/MCP Hub.app"

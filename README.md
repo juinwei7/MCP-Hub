@@ -59,6 +59,19 @@ claude mcp add my-hub -e PYTHONPATH="<專案路徑>" -- "<專案>/.venv/bin/pyth
 
 > Docker 部署與容器內接 Claude 的方式見 **[DEPLOY.md](DEPLOY.md)**。
 
+### macOS 原生 app
+
+也可以用原生 app 取代網頁管理台 —— 不用記得開、不用佔終端機、選單列直接看得到狀態。
+
+```bash
+cd macos && make dist
+open "build/MCP Hub.app"
+```
+
+產出的 `.app` 內附 Python runtime,複製到任何路徑都能執行,不需要先裝 Python。
+> 系統通知與開機自動啟動需要 Apple Developer ID 簽章(`make sign`);
+> 沒有憑證時 app 仍可使用,狀態改由選單列顯示。
+
 ---
 
 ## 兩個角色
@@ -92,8 +105,10 @@ gateway/
 ├── openapi.py      OpenAPI 規格匯入
 ├── directory.py    公開 API 目錄搜尋(APIs.guru)
 ├── config.py       共用設定(可用環境變數覆寫)
-└── auth.py         OAuth 2.1 + PKCE 授權
-tests/test_smoke.py 冒煙測試(標準庫 unittest,免裝 pytest)
+├── auth.py         OAuth 2.1 + PKCE 授權
+└── api.py          JSON API(給原生 client 用)
+macos/              macOS 原生 app(SwiftUI;後端仍是上面那套 Python)
+tests/              冒煙測試 + API 測試(標準庫 unittest,免裝 pytest)
 start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
 ```
 
@@ -113,17 +128,24 @@ start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
 ## 開發
 
 ```bash
-./.venv/bin/python -m unittest tests.test_smoke -v
+./.venv/bin/python -m unittest discover -s tests   # Python:82 個
+cd macos && make test                              # Swift + app 生命週期驗收
 ```
 
-冒煙測試涵蓋 store CRUD、金鑰加解密、解析 helper、每頁 GET 200、以及**路由防呆**(自動偵測參數路由遮蔽字面路由)。測試用臨時 DB / 金鑰,不污染正式資料。
+冒煙測試涵蓋 store CRUD、金鑰加解密、解析 helper、每頁 GET 200、以及**路由防呆**(自動偵測參數路由遮蔽字面路由)。API 測試涵蓋每個端點的成功與失敗路徑,並驗證密鑰不會出現在任何回應中。測試用臨時 DB / 金鑰,不污染正式資料。
+
+`make test` 會跑 Swift 單元測試,以及實際啟動 app、殺掉程序、檢查有無殘留的端對端驗收。
+
+每次 push 由 [CI](.github/workflows/ci.yml) 在 **macOS / Windows / Linux** 三個平台跑同一套測試,
+並從 `requirements.txt` 從零安裝 —— 「本機剛好裝過」的依賴會當場被抓出來。
+CI 另外實機驗證金鑰檔的存取權限(POSIX 檢查權限位元,Windows 檢查 ACL)。
 
 ---
 
 ## 安全備註
 
 - 管理台**沒有登入**,靠「只綁 `127.0.0.1`」保護——單人本機用足夠;要開遠端才需要加驗證。
-- `.secret_key` 是解開 DB 內密鑰的金鑰,**請單獨備份**;遺失則 token 解不回來。`.gitignore` 已擋掉它與 `actions.db`。
+- `.secret_key` 是解開 DB 內密鑰的金鑰,**請單獨備份**;遺失則 token 解不回來。`.gitignore` 已擋掉它與 `actions.db`。權限在 macOS / Linux 設為 0600,在 Windows 改用 ACL 限制(`icacls`)—— `os.chmod` 在 Windows 只認 read-only 旗標,照抄等於沒保護。
 - 匯出設定含本機絕對路徑(stdio 下游),搬機器可能要改(匯出檔內已附 `_note` 提醒)。
 
 ---
@@ -131,5 +153,6 @@ start.sh · Dockerfile · docker-compose.yml · DEPLOY.md
 ## 尚未完成(Roadmap)
 
 - OAuth client 預先註冊(無 DCR 服務的 client_id / secret 設定)
-- 管理台登入驗證(供遠端部署)
+- 管理台登入驗證(供遠端部署;JSON API 已有 token 驗證)
 - Hub 以 HTTP 對外(讓 client 貼一個 URL 就連,免 stdio)
+- Windows 原生 app(共用 `gateway/api.py`,只需重做介面)

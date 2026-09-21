@@ -10,6 +10,8 @@
 空值 / 空 JSON 容器({}、[])不含密鑰,保持明文以利辨識、減少雜訊。
 """
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -21,6 +23,40 @@ _SKIP = ("", "{}", "[]")   # 不含密鑰,不加密
 _fernet = None
 
 
+def _protect(path):
+    """
+    把金鑰檔限制成只有本人能讀。
+
+    Windows 上 os.chmod 只認得 read-only 旗標,POSIX 的權限位元會被忽略 ——
+    照抄 chmod(0o600) 等於沒保護。要真的限制存取得改 ACL。
+
+    用內建的 icacls 而不是 pywin32:後者得處理 SID、DACL、security descriptor,
+    出錯的方式更多,而這段在 macOS 上無法實測 —— 選更難寫錯的那個。
+    """
+    if sys.platform.startswith("win"):
+        user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+        if not user:
+            _warn(path, "找不到目前的使用者名稱")
+            return
+        try:
+            r = subprocess.run(
+                ["icacls", str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
+                capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                _warn(path, (r.stderr or r.stdout).strip()[:200])
+        except Exception as e:
+            _warn(path, str(e)[:200])
+    else:
+        os.chmod(path, 0o600)
+
+
+def _warn(path, reason):
+    """保護失敗不該靜默 —— 那會讓使用者以為金鑰是安全的。但也不該讓 Hub 起不來。"""
+    print(f"警告:無法限制金鑰檔 {path} 的存取權限({reason})。"
+          f"同一台機器的其他使用者可能讀得到它,進而解開 DB 內的所有 token。",
+          file=sys.stderr)
+
+
 def _get_fernet():
     global _fernet
     if _fernet is None:
@@ -30,7 +66,7 @@ def _get_fernet():
         else:
             key = Fernet.generate_key()
             p.write_bytes(key)
-            os.chmod(p, 0o600)   # 僅本人可讀寫
+            _protect(p)
         _fernet = Fernet(key)
     return _fernet
 

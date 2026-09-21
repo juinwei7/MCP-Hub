@@ -4,7 +4,7 @@ import ServiceManagement
 /// 開機自動啟動。
 ///
 /// 跟通知一樣需要正式的 bundle —— 開發時直接跑的執行檔不適用,此時整個功能停用
-/// 而不是報錯(約束 C-2)。
+/// 而不是報錯。
 enum LoginItem {
 
     static var available: Bool { Bundle.main.bundleIdentifier != nil }

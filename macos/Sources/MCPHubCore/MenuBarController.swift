@@ -26,7 +26,7 @@ final class MenuBarController {
 
     private func rebuildMenu() {
         item.button?.title = summaryTitle()
-        // 通知送不出去時,選單列就是唯一的提示管道,有待辦就換成實心圖示(約束 C-3)
+        // 通知送不出去時,選單列就是唯一的提示管道,有待辦就換成實心圖示
         let needsAttention = state.pendingCount > 0 && !state.notifier.canNotify
         item.button?.image = NSImage(
             systemSymbolName: needsAttention ? "exclamationmark.triangle.fill"

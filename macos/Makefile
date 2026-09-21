@@ -27,7 +27,7 @@ app: release
 	cp "$(BIN)" "$(APP)/Contents/MacOS/MCPHub"
 	cp Resources/Info.plist "$(APP)/Contents/Info.plist"
 	@# ad-hoc 簽章:通知與開機啟動都要求 app 有簽章身分。
-	@# 這不需要 Developer 帳號,但也不能散布給別人(見 spec 005)。
+	@# 這不需要 Developer 帳號,但也不能散布給別人(見 sign-and-notarize.sh)。
 	codesign --force --deep --sign - "$(APP)"
 	@echo "已產出 $(APP)(ad-hoc 簽章,未內附 Python)"
 	@echo "開發時可直接跑;要給別人請改用 make dist。"

@@ -60,7 +60,7 @@ async def lifespan(app):
 
 app = FastAPI(title="MCP Hub 管理台", lifespan=lifespan)
 
-# 給原生 client 用的 JSON API(specs/001-json-api)。掛在同一個 app 同一個 port,
+# 給原生 client 用的 JSON API。掛在同一個 app 同一個 port,
 # 因為 OAuth 的 redirect_uri 綁在這裡,且 ConsoleOAuthFlow 的 state 表是行程內的。
 from gateway import api as _api   # noqa: E402  放在 app 之後,因為 api 需要 web 的錯誤解讀
 app.include_router(_api.router)
@@ -575,7 +575,7 @@ def _oauth_error_hint(err):
 
 
 def _exception_details(err):
-    # 實作已移到 hub.py —— 錯誤是在那裡產生的,健檢與管理台要用同一套解讀(憲法 B2)。
+    # 實作已移到 hub.py —— 錯誤是在那裡產生的,健檢與管理台要用同一套解讀。
     return hub.exception_details(err)
 
 

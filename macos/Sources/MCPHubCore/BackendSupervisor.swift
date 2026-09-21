@@ -48,7 +48,7 @@ final class BackendSupervisor {
 
     private var pidFile: URL { Self.dataDirectory.appendingPathComponent("backend.pid") }
 
-    /// 開發時用專案的 .venv;打包後用 bundle 內附的 runtime(Spec 004)。
+    /// 開發時用專案的 .venv;打包後用 bundle 內附的 runtime。
     private func resolvePython() -> (executable: URL, repo: URL)? {
         let env = ProcessInfo.processInfo.environment
         if let py = env["MCPHUB_PYTHON"], let repo = env["MCPHUB_REPO"] {
