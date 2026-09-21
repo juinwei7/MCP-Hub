@@ -151,14 +151,20 @@ jobs:
           BACKEND="$APP/Contents/Resources/backend"
 
           test -x "$BACKEND/bin/python3" || { echo "::error::找不到內附的 Python"; exit 1; }
-          test -d "$BACKEND/gateway/templates" || { echo "::error::找不到模板"; exit 1; }
 
-          COUNT=$(ls "$BACKEND/gateway/templates"/*.html | wc -l | tr -d ' ')
-          echo "模板數:$COUNT"
-          test "$COUNT" -ge 25 || { echo "::error::模板數不足"; exit 1; }
+          # 網頁管理台移除後,bundle 要有的是 API 模組而不是模板
+          for m in web api api_tools api_import store crypto hub pool auth; do
+            test -f "$BACKEND/gateway/$m.py" || { echo "::error::缺少 gateway/$m.py"; exit 1; }
+          done
 
           # 用內附的 Python 匯入,不能靠 runner 上的任何東西
-          PYTHONPATH="$BACKEND" "$BACKEND/bin/python3" -c "import gateway.web, gateway.api"
+          PYTHONPATH="$BACKEND" "$BACKEND/bin/python3" -c "
+          import gateway.web, gateway.api, gateway.api_tools, gateway.api_import
+          routes = [r.path for r in gateway.web.app.routes if hasattr(r, 'path')]
+          html = [p for p in routes if p in ('/', '/tools', '/logs', '/composites')]
+          assert not html, f'HTML 路由不該還在:{html}'
+          print(f'匯入成功,{len(routes)} 條路由')
+          "
           echo "bundle 自足性確認"
 
       - name: 體積
