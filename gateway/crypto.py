@@ -16,6 +16,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from gateway import console
 from gateway.config import SECRET_KEY_PATH
 
 _PREFIX = "enc:v1:"
@@ -51,10 +52,15 @@ def _protect(path):
 
 
 def _warn(path, reason):
-    """保護失敗不該靜默 —— 那會讓使用者以為金鑰是安全的。但也不該讓 Hub 起不來。"""
-    print(f"警告:無法限制金鑰檔 {path} 的存取權限({reason})。"
-          f"同一台機器的其他使用者可能讀得到它,進而解開 DB 內的所有 token。",
-          file=sys.stderr)
+    """
+    保護失敗不該靜默 —— 那會讓使用者以為金鑰是安全的。但也不該讓 Hub 起不來。
+
+    用 console.eprint 而不是 print:Windows 主控台的預設編碼編不出中文,
+    直接 print 會拋 UnicodeEncodeError,而這個函式正好是在出事時才被呼叫的 ——
+    警告本身變成崩潰,原因還看起來跟編碼無關。
+    """
+    console.eprint(f"警告:無法限制金鑰檔 {path} 的存取權限({reason})。"
+                   f"同一台機器的其他使用者可能讀得到它,進而解開 DB 內的所有 token。")
 
 
 def _get_fernet():

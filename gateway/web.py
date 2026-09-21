@@ -1215,9 +1215,11 @@ def reject(action_id: str):
 
 if __name__ == "__main__":
     import uvicorn
+    from gateway import console
+    console.use_utf8()   # Windows 主控台預設編碼編不出中文
     ok, note = _api.preflight(HOST, PORT)
     if note:
-        print(note, file=sys.stderr)
+        console.eprint(note)
     if not ok:
         sys.exit(1)
     uvicorn.run(app, host=HOST, port=PORT)

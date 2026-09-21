@@ -98,4 +98,6 @@ def main():
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from gateway import console
+    console.use_utf8()   # Windows 主控台預設編碼編不出中文
     main()

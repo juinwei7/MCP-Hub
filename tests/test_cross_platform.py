@@ -161,5 +161,50 @@ class TestSecretKeyProtection(unittest.TestCase):
         self.assertEqual(mode, 0o600, f"金鑰檔權限應為 0600,實際 {oct(mode)}")
 
 
+class TestConsoleEncoding(unittest.TestCase):
+    """
+    Windows 主控台的預設編碼(cp950 / cp1252)編不出中文。
+
+    這不是美觀問題:crypto._warn 是在「金鑰保護失敗」時才呼叫的,警告本身
+    若拋 UnicodeEncodeError,會一路傳到 _get_fernet() —— 那是每次加解密的
+    必經之路,整個 Hub 會崩潰,而且原因看起來跟編碼毫無關係。
+    """
+
+    def cp1252_stream(self):
+        import io
+        return io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+
+    def test_plain_print_would_crash(self):
+        # 先證明這個情境是真的 —— 否則下面的測試等於沒測到東西
+        with self.assertRaises(UnicodeEncodeError):
+            print("警告:中文訊息", file=self.cp1252_stream())
+
+    def test_eprint_survives_unencodable_console(self):
+        from gateway import console
+        stream = self.cp1252_stream()
+        with mock.patch.object(sys, "stderr", stream):
+            console.eprint("警告:中文訊息")   # 不該拋例外
+
+    def test_warn_survives_unencodable_console(self):
+        # 端對端:保護失敗的警告在編不出中文的主控台上也不能崩潰
+        stream = self.cp1252_stream()
+        with mock.patch.object(sys, "platform", "win32"), \
+             mock.patch.dict(os.environ, {"USERNAME": "u"}), \
+             mock.patch.object(crypto, "subprocess") as sp, \
+             mock.patch.object(sys, "stderr", stream):
+            sp.run.return_value = mock.Mock(returncode=1, stdout="", stderr="拒絕存取")
+            crypto._protect(Path(r"C:\x"))   # 不該拋例外
+
+    def test_message_is_not_silently_dropped(self):
+        # 退路可以讓訊息變難看,但不能讓它消失
+        from gateway import console
+        import io
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        with mock.patch.object(sys, "stderr", stream):
+            console.eprint("警告:金鑰未受保護")
+        self.assertTrue(raw.getvalue(), "訊息不該被默默丟掉")
+
+
 if __name__ == "__main__":
     unittest.main()
