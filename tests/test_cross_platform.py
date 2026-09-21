@@ -206,5 +206,66 @@ class TestConsoleEncoding(unittest.TestCase):
         self.assertTrue(raw.getvalue(), "訊息不該被默默丟掉")
 
 
+class TestIcaclsParsing(unittest.TestCase):
+    r"""
+    解析 icacls 輸出,判斷金鑰檔有沒有開放給廣泛主體。
+
+    這段在 macOS 上測得了 —— 輸入是文字。而它的 bug 只有在 Windows 上才會
+    現形:原本直接在整段輸出裡找 "Users",結果配到檔案路徑 C:\Users\...,
+    把一個正常的 ACL 誤判成外洩。
+    """
+
+    @staticmethod
+    def module():
+        import importlib.util
+        root = Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location(
+            "verify_key_protection", root / "scripts" / "verify_key_protection.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    # CI 的 Windows runner 實際回報的輸出
+    REAL_PATH = r"C:\Users\RUNNER~1\AppData\Local\Temp\tmptjkssy2z\.secret_key"
+
+    REAL_OUTPUT = "\n".join([
+        REAL_PATH + r" NT AUTHORITY\SYSTEM:(F)",
+        r"                          BUILTIN\Administrators:(F)",
+        r"                          runnervmvmocb\runneradmin:(F)",
+        "",
+        "Successfully processed 1 files; Failed processing 0 files",
+    ])
+
+    def test_parses_real_ci_output(self):
+        got = [p.lower() for p in self.module().acl_principals(self.REAL_OUTPUT, self.REAL_PATH)]
+        self.assertEqual(got, [r"nt authority\system",
+                               r"builtin\administrators",
+                               r"runnervmvmocb\runneradmin"])
+
+    def test_path_containing_users_is_not_a_principal(self):
+        # 這就是實際踩到的誤判:路徑裡的 Users 不是 ACL 項目
+        m = self.module()
+        principals = [p.lower() for p in m.acl_principals(self.REAL_OUTPUT, self.REAL_PATH)]
+        leaked = [p for p in principals if p in m.BROAD_PRINCIPALS]
+        self.assertEqual(leaked, [], "路徑裡的 Users 不該被當成 BUILTIN 群組")
+
+    def test_detects_a_genuinely_open_acl(self):
+        # 反面:真的開放給 Everyone 時必須抓到
+        m = self.module()
+        output = "\n".join([
+            r"C:\data\.secret_key Everyone:(F)",
+            r"                     BUILTIN\Users:(RX)",
+        ])
+        principals = [p.lower() for p in m.acl_principals(output, r"C:\data\.secret_key")]
+        leaked = [p for p in principals if p in m.BROAD_PRINCIPALS]
+        self.assertIn("everyone", leaked)
+        self.assertIn(r"builtin\users", leaked)
+
+    def test_ignores_summary_lines(self):
+        m = self.module()
+        self.assertEqual(
+            m.acl_principals("Successfully processed 1 files; Failed processing 0 files", "C:\\x"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
