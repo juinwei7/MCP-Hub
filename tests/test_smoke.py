@@ -22,6 +22,7 @@ os.environ["MCP_HUB_DB"] = _TMP_DB
 os.environ["MCP_HUB_KEY"] = _TMP_KEY
 
 from gateway import store, web, crypto, skills, auth  # noqa: E402
+from mcp.shared.auth import OAuthToken, ProtectedResourceMetadata  # noqa: E402
 from gateway.web import (  # noqa: E402
     _entry_to_server, _extract_mcp_servers, _parse_tool_form, _parse_composite_form,
 )
@@ -198,6 +199,36 @@ class TestOAuth(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await storage.get_tokens())
         self.assertIsNone(await storage.get_client_info())
         self.assertIsNone(store.get_oauth_tokens(slug))
+
+    async def test_token_without_expires_in_clears_stale_expiry(self):
+        # 換到一顆沒有 expires_in 的 token 時,舊的到期時間要跟著清掉,
+        # 否則時間一過,還有效的 token 會被 is_token_valid() 永遠判成過期。
+        slug = "expiring-oauth"
+        storage = auth.SqliteTokenStorage(slug)
+        await storage.set_tokens(OAuthToken(access_token="first", expires_in=3600))
+        self.assertIsNotNone(store.get_oauth_expiry(slug))
+
+        await storage.set_tokens(OAuthToken(access_token="second"))
+        self.assertIsNone(store.get_oauth_expiry(slug))
+        self.assertIn("second", store.get_oauth_tokens(slug))
+
+    def test_oauth_metadata_roundtrip(self):
+        slug = "metadata-oauth"
+        store.set_oauth_metadata(slug, '{"issuer": "https://as.example"}', '{"resource": "https://rs.example"}')
+        self.assertIn("as.example", store.get_oauth_metadata(slug))
+        self.assertIn("rs.example", store.get_oauth_resource_metadata(slug))
+        # 沒探查到 PRM 時傳 None → 清掉,不會留著上一次的
+        store.set_oauth_metadata(slug, '{"issuer": "https://as2.example"}')
+        self.assertIsNone(store.get_oauth_resource_metadata(slug))
+
+    def test_prm_resource_must_cover_server_url(self):
+        prm = ProtectedResourceMetadata(
+            resource="https://api.example.com/mcp",
+            authorization_servers=["https://as.example.com"],
+        )
+        self.assertTrue(auth._resource_matches(prm, "https://api.example.com/mcp"))
+        self.assertFalse(auth._resource_matches(prm, "https://evil.example.com/mcp"))
+
 
 class TestParsers(unittest.TestCase):
     def test_slugify(self):

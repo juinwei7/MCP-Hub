@@ -130,10 +130,12 @@ def init_db():
             )
             """
         )
-        # 遷移:OAuth token 絕對到期時間 + 快取的 Authorization Server metadata
-        # (讓重建的 OAuthClientProvider 能正確判斷是否該 refresh、該打哪個 token endpoint)
+        # 遷移:OAuth token 絕對到期時間 + 快取的探查文件
+        # (讓重建的 OAuthClientProvider 能正確判斷是否該 refresh、該打哪個 token endpoint,
+        #  PRM 則決定 refresh 要不要帶 RFC 8707 的 resource 參數)
         ocols = [r["name"] for r in c.execute("PRAGMA table_info(oauth_tokens)").fetchall()]
-        for col, decl in [("expires_at", "REAL"), ("metadata", "TEXT")]:
+        for col, decl in [("expires_at", "REAL"), ("metadata", "TEXT"),
+                          ("resource_metadata", "TEXT")]:
             if col not in ocols:
                 c.execute(f"ALTER TABLE oauth_tokens ADD COLUMN {col} {decl}")
         c.execute(
@@ -552,55 +554,65 @@ def save_result(action_id, result):
 
 
 # ── oauth_tokens(OAuth 授權用,給 auth.SqliteTokenStorage) ──
-def _upsert_oauth(slug, column, value):
+def _upsert_oauth(slug, **columns):
+    """寫一列 oauth_tokens 的若干欄位;多欄一起給就是同一筆交易,不會寫一半。"""
+    names = list(columns)
     with _db() as c:
         c.execute(
-            f"INSERT INTO oauth_tokens (server_slug, {column}) VALUES (?, ?) "
-            f"ON CONFLICT(server_slug) DO UPDATE SET {column} = excluded.{column}",
-            (slug, value),
+            f"INSERT INTO oauth_tokens (server_slug, {', '.join(names)}) "
+            f"VALUES (?{', ?' * len(names)}) "
+            f"ON CONFLICT(server_slug) DO UPDATE SET "
+            + ", ".join(f"{n} = excluded.{n}" for n in names),
+            (slug, *(columns[n] for n in names)),
         )
 
 
+def _get_oauth(slug, column):
+    with _db() as c:
+        row = c.execute(
+            f"SELECT {column} FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
+    return row[column] if row else None
+
+
 def set_oauth_client_info(slug, info_json):
-    _upsert_oauth(slug, "client_info", crypto.enc(info_json))
+    _upsert_oauth(slug, client_info=crypto.enc(info_json))
 
 
 def get_oauth_client_info(slug):
-    with _db() as c:
-        row = c.execute("SELECT client_info FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
-    return crypto.dec(row["client_info"]) or None if row and row["client_info"] else None
+    raw = _get_oauth(slug, "client_info")
+    return crypto.dec(raw) or None if raw else None
 
 
-def set_oauth_tokens(slug, tokens_json):
-    _upsert_oauth(slug, "tokens", crypto.enc(tokens_json))
+def set_oauth_tokens(slug, tokens_json, expires_at=None):
+    """
+    存 token 與它的絕對到期時間(epoch 秒,非密鑰不加密)。
+
+    兩者必須同一筆寫入:token 換了、到期時間就跟著換,沒給就寫 NULL 清掉 ——
+    留著上一顆 token 的到期時間會讓還有效的 token 被當成過期。
+    """
+    _upsert_oauth(slug, tokens=crypto.enc(tokens_json), expires_at=expires_at)
 
 
 def get_oauth_tokens(slug):
-    with _db() as c:
-        row = c.execute("SELECT tokens FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
-    return crypto.dec(row["tokens"]) or None if row and row["tokens"] else None
-
-
-def set_oauth_expiry(slug, expires_at):
-    """存 access token 的絕對到期時間(epoch 秒);非密鑰,不加密。"""
-    _upsert_oauth(slug, "expires_at", expires_at)
+    raw = _get_oauth(slug, "tokens")
+    return crypto.dec(raw) or None if raw else None
 
 
 def get_oauth_expiry(slug):
-    with _db() as c:
-        row = c.execute("SELECT expires_at FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
-    return row["expires_at"] if row and row["expires_at"] is not None else None
+    return _get_oauth(slug, "expires_at")
 
 
-def set_oauth_metadata(slug, metadata_json):
-    """存 Authorization Server 的探查文件(含 token_endpoint);公開資訊,不加密。"""
-    _upsert_oauth(slug, "metadata", metadata_json)
+def set_oauth_metadata(slug, metadata_json, resource_metadata_json=None):
+    """存下游的 OAuth 探查文件(AS metadata 含 token_endpoint、PRM 含 resource);公開資訊,不加密。"""
+    _upsert_oauth(slug, metadata=metadata_json, resource_metadata=resource_metadata_json)
 
 
 def get_oauth_metadata(slug):
-    with _db() as c:
-        row = c.execute("SELECT metadata FROM oauth_tokens WHERE server_slug = ?", (slug,)).fetchone()
-    return row["metadata"] if row and row["metadata"] else None
+    return _get_oauth(slug, "metadata") or None
+
+
+def get_oauth_resource_metadata(slug):
+    return _get_oauth(slug, "resource_metadata") or None
 
 
 def clear_oauth(slug):

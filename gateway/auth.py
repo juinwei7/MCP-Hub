@@ -11,6 +11,7 @@
 """
 
 import asyncio
+import time
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -22,8 +23,18 @@ from mcp.client.auth.utils import (
     handle_auth_metadata_response,
     handle_protected_resource_response,
 )
-from mcp.shared.auth import OAuthClientMetadata, OAuthMetadata, OAuthToken, OAuthClientInformationFull
-from mcp.shared.auth_utils import calculate_token_expiry
+from mcp.shared.auth import (
+    OAuthClientInformationFull,
+    OAuthClientMetadata,
+    OAuthMetadata,
+    OAuthToken,
+    ProtectedResourceMetadata,
+)
+from mcp.shared.auth_utils import (
+    calculate_token_expiry,
+    check_resource_allowed,
+    resource_url_from_server_url,
+)
 
 from gateway import store
 from gateway.config import BASE_URL
@@ -42,10 +53,10 @@ class SqliteTokenStorage(TokenStorage):
         return OAuthToken.model_validate_json(raw) if raw else None
 
     async def set_tokens(self, tokens):
-        store.set_oauth_tokens(self.slug, tokens.model_dump_json())
-        expires_at = calculate_token_expiry(tokens.expires_in)
-        if expires_at is not None:
-            store.set_oauth_expiry(self.slug, expires_at)
+        # token 與到期時間同一筆寫入:分兩次寫會留下「有到期時間、沒 token」的殘缺列,
+        # 而 expires_in 缺席時(RFC 6749 允許)得把舊值清成 NULL,不能沿用上一顆 token 的。
+        store.set_oauth_tokens(
+            self.slug, tokens.model_dump_json(), calculate_token_expiry(tokens.expires_in))
 
     async def get_client_info(self):
         return self._compatible_client_info()
@@ -79,19 +90,40 @@ def _client_metadata():
     )
 
 
+DISCOVERY_TIMEOUT = 15        # 整段 discovery 的上限(連線池在全域鎖裡等它,不能沒有天花板)
+DISCOVERY_RETRY_AFTER = 300   # 探查失敗後隔多久才願意再試一次
+_discovery_failed_at = {}     # slug → 上次探查失敗的 monotonic 時間
+
+
+def _resource_matches(prm, server_url):
+    """RFC 8707:PRM 宣告的 resource 必須涵蓋這台下游,否則不採信它指的 AS。"""
+    if not prm.resource:
+        return True
+    return check_resource_allowed(
+        requested_resource=resource_url_from_server_url(server_url),
+        configured_resource=str(prm.resource),
+    )
+
+
 async def _discover_oauth_metadata(server_url):
     """
     Best-effort 做一次 PRM + ASM discovery(跟 SDK 的 async_auth_flow 401 分支的
-    Step 1/2 同一套邏輯,搬出 generator 自己跑),失敗就回 None,不擋住主流程。
+    Step 1/2 同一套邏輯,搬出 generator 自己跑),回傳 (prm, asm),失敗就回 (None, None)。
+
+    follow_redirects 要跟 SDK 的 transport(create_mcp_http_client)一致 —— 少了它,
+    well-known 端點只要回 301/302 這裡就判定失敗,而 SDK 自己跑卻會成功。
     """
+    prm = asm = None
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            prm = None
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             for url in build_protected_resource_metadata_discovery_urls(None, server_url):
                 response = await client.send(create_oauth_metadata_request(url))
                 prm = await handle_protected_resource_response(response)
                 if prm:
                     break
+
+            if prm and not _resource_matches(prm, server_url):
+                return None, None   # 不是這台下游的 PRM,它指的 token endpoint 也別存
 
             auth_server_url = None
             if prm and prm.authorization_servers:
@@ -101,13 +133,42 @@ async def _discover_oauth_metadata(server_url):
                     auth_server_url, server_url):
                 response = await client.send(create_oauth_metadata_request(url))
                 ok, asm = await handle_auth_metadata_response(response)
-                if asm:
-                    return asm
-                if not ok:
+                if asm or not ok:
                     break
     except Exception:
-        return None
-    return None
+        return None, None
+    return prm, asm
+
+
+def persist_discovered_metadata(slug, provider):
+    """把 context 上的探查結果存起來,供之後重建的 provider 直接用(refresh 才打得對)。"""
+    ctx = provider.context
+    if not ctx.oauth_metadata and not ctx.protected_resource_metadata:
+        return
+    store.set_oauth_metadata(
+        slug,
+        ctx.oauth_metadata.model_dump_json() if ctx.oauth_metadata else None,
+        ctx.protected_resource_metadata.model_dump_json()
+        if ctx.protected_resource_metadata else None,
+    )
+
+
+def _restore_cached_metadata(provider, slug):
+    """把存下的 PRM / ASM 放回 context。壞掉的快取當作沒有,交給後面重新探查覆寫。"""
+    for raw, model, field in (
+        (store.get_oauth_metadata(slug), OAuthMetadata, "oauth_metadata"),
+        (store.get_oauth_resource_metadata(slug), ProtectedResourceMetadata,
+         "protected_resource_metadata"),
+    ):
+        if not raw:
+            continue
+        try:
+            setattr(provider.context, field, model.model_validate_json(raw))
+        except Exception:
+            pass
+    prm = provider.context.protected_resource_metadata
+    if prm and prm.authorization_servers:
+        provider.context.auth_server_url = str(prm.authorization_servers[0])
 
 
 async def provider_for(server, redirect_handler=None, callback_handler=None):
@@ -116,9 +177,9 @@ async def provider_for(server, redirect_handler=None, callback_handler=None):
     - 非互動情境(hub_server 轉發):不給 handler,靠已存的 token;沒 token 就會失敗(需先在管理台授權)。
     - 互動情境(管理台授權):由 ConsoleOAuthFlow 提供 redirect/callback handler。
 
-    SDK 重建 provider 時只會從 storage 載入 token 本身,不會載入到期時間或
-    Authorization Server metadata,導致 refresh 永遠不會被觸發、或觸發了打錯 token
-    endpoint。這裡在建好後手動把之前存的這兩項補回 context,讓 refresh 真的能運作。
+    SDK 重建 provider 時只會從 storage 載入 token 本身,不會載入到期時間或探查文件,
+    導致 refresh 永遠不會被觸發、或觸發了打錯 token endpoint。這裡在建好後手動把之前
+    存的補回 context,讓 refresh 真的能運作。
     """
     slug = server["slug"]
     provider = OAuthClientProvider(
@@ -135,19 +196,38 @@ async def provider_for(server, redirect_handler=None, callback_handler=None):
     if expires_at is not None:
         provider.context.token_expiry_time = expires_at
 
-    cached_metadata = store.get_oauth_metadata(slug)
-    if cached_metadata:
-        try:
-            provider.context.oauth_metadata = OAuthMetadata.model_validate_json(cached_metadata)
-        except Exception:
-            cached_metadata = None
-    if not cached_metadata and provider.context.current_tokens:
-        metadata = await _discover_oauth_metadata(server["base_url"])
-        if metadata:
-            provider.context.oauth_metadata = metadata
-            store.set_oauth_metadata(slug, metadata.model_dump_json())
+    # 互動授權不套用快取:SDK 的 401 分支本來就會重新探查,這裡先塞一份過期/錯誤的
+    # endpoint 反而會讓使用者連「重新授權」這條救命路都走不通。
+    if redirect_handler or callback_handler:
+        return provider
+
+    _restore_cached_metadata(provider, slug)
+    # refresh 真正需要的是 ASM 裡的 token_endpoint;只有它缺席才值得付探查的網路成本。
+    if not provider.context.oauth_metadata and provider.context.current_tokens:
+        await _discover_and_cache(provider, slug, server["base_url"])
 
     return provider
+
+
+async def _discover_and_cache(provider, slug, server_url):
+    """沒有快取時才探查一次。全程有上限,失敗會退避,不讓一台下游拖垮整個連線池。"""
+    failed_at = _discovery_failed_at.get(slug)
+    if failed_at is not None and time.monotonic() - failed_at < DISCOVERY_RETRY_AFTER:
+        return
+    try:
+        prm, asm = await asyncio.wait_for(
+            _discover_oauth_metadata(server_url), DISCOVERY_TIMEOUT)
+    except Exception:   # 含 wait_for 逾時;探查失敗不該擋住連線
+        prm = asm = None
+    if not prm and not asm:
+        _discovery_failed_at[slug] = time.monotonic()
+        return
+    _discovery_failed_at.pop(slug, None)
+    provider.context.oauth_metadata = asm
+    provider.context.protected_resource_metadata = prm
+    if prm and prm.authorization_servers:
+        provider.context.auth_server_url = str(prm.authorization_servers[0])
+    persist_discovered_metadata(slug, provider)
 
 
 # ── 管理台互動授權流程(skeleton,需真服務才跑得完) ──────────────
