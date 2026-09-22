@@ -161,6 +161,17 @@ jobs:
         working-directory: windows
         run: dotnet build MCPHub.App/MCPHub.App.csproj -c Release
 
+      - name: 種示範資料
+        # 空資料庫只渲染得出空狀態,而這份設計的主張全在「列」上 ——
+        # 色條、等寬與系統字的切換、待確認的琥珀色,都要有資料才看得到。
+        env:
+          MCP_HUB_DB: ${{ runner.temp }}\mcphub\actions.db
+          MCP_HUB_KEY: ${{ runner.temp }}\mcphub\.secret_key
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path '${{ runner.temp }}\mcphub' | Out-Null
+          .venv\Scripts\python.exe windows\scripts\seed_demo.py
+
       - name: 渲染畫面
         working-directory: windows
         env:
@@ -182,7 +193,7 @@ jobs:
             exit 1
           }
           Get-Content shots\shot.log
-          foreach ($n in 'light','dark') {
+          foreach ($n in 'servers-light','servers-dark','actions-light','actions-dark') {
             $f = "shots\$n.png"
             if (-not (Test-Path $f)) { Write-Host "::error::沒有產出 $f"; exit 1 }
             Write-Host "$f  $((Get-Item $f).Length) bytes"

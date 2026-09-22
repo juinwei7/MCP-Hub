@@ -45,20 +45,28 @@ internal static class Shot
         // 讓第一輪輪詢把資料填進來
         await state.RefreshAsync().ConfigureAwait(true);
 
+        log.WriteLine($"下游 {state.Servers.Count} 台、待確認 {state.PendingCount} 筆");
+
+        // 兩個主題 × 兩個畫面。深色不是把淺色反轉是另一組色值,而設計的主張
+        // 全在「列」上 —— 空狀態什麼都驗不到。
         foreach (var dark in new[] { false, true })
         {
             ThemeManager.Force(dark);
-            var name = dark ? "dark" : "light";
-            var path = Path.Combine(outDir, $"{name}.png");
-            Render(path);
-            log.WriteLine($"已渲染 {path}");
+            var theme = dark ? "dark" : "light";
+            foreach (var actions in new[] { false, true })
+            {
+                var name = $"{(actions ? "actions" : "servers")}-{theme}";
+                var path = Path.Combine(outDir, $"{name}.png");
+                Render(path, actions);
+                log.WriteLine($"已渲染 {path}");
+            }
         }
 
         File.WriteAllText(Path.Combine(outDir, "shot.log"), log.ToString());
         return 0;
     }
 
-    private static void Render(string path)
+    private static void Render(string path, bool actions)
     {
         // 每次都重建:主題換過之後,已經建好的控制項雖然會跟著 DynamicResource
         // 更新,但 code-behind 用 FindResource 取到的筆刷是當下那一份 ——
@@ -68,6 +76,8 @@ internal static class Shot
             Width = Width,
             Height = Height,
         };
+
+        if (actions) window.SelectActions();
 
         var root = (UIElement)window.Content;
         window.Content = null;   // 先脫離視窗,才能單獨排版與渲染

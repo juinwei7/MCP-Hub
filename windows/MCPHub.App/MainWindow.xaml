@@ -12,7 +12,10 @@
       側邊欄而不是上方分頁:這個資訊量用分頁列會擠,而且分頁沒有地方放計數。
       側邊欄讓「有幾個待確認」在任何畫面都看得到。
     -->
-    <Grid>
+    <!-- 底色畫在根 Grid 而不是只有 Window:截圖渲染的是 Content,
+         設在 Window 上的底色不會出現在圖裡 —— 淺色看不出來(剛好接近白),
+         深色就整片穿幫。 -->
+    <Grid Background="{DynamicResource Ground}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="196"/>
             <ColumnDefinition Width="1"/>

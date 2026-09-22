@@ -29,6 +29,9 @@ public partial class MainWindow : Window
         Refresh();
     }
 
+    /// <summary>截圖用:切到「待確認」。正常操作走側邊欄。</summary>
+    internal void SelectActions() => NavActions.IsChecked = true;
+
     // ── 導覽 ──────────────────────────────────────────────
 
     private void OnNavChanged(object sender, RoutedEventArgs e)
