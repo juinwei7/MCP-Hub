@@ -40,6 +40,8 @@ public sealed class TrayIcon : IDisposable
             Text = "MCP Hub",
         };
         _icon.DoubleClick += (_, _) => _showWindow();
+        // 點通知本身就把視窗叫出來 —— 通知講的事都要在視窗裡才處理得了
+        _icon.BalloonTipClicked += (_, _) => _showWindow();
         // 每次打開才重建:下游狀態隨時在變,預先建好的選單會顯示過期的資訊
         _icon.ContextMenuStrip.Opening += (_, _) => Rebuild();
 
@@ -47,7 +49,41 @@ public sealed class TrayIcon : IDisposable
         UpdateIcon();
     }
 
-    private void OnStateChanged() => UpdateIcon();
+    private void OnStateChanged()
+    {
+        UpdateIcon();
+        Notify();
+    }
+
+    // ── 通知 ──────────────────────────────────────────────
+    //
+    // 用 NotifyIcon 的氣球提示,不是 Windows.UI.Notifications 的 toast。
+    // toast 需要註冊 AppUserModelID 並在開始功能表放一個捷徑,而那對一個
+    // 解壓縮就能跑的 app 來說是額外的安裝步驟。氣球提示在 Win10/11 上
+    // 本來就會被系統呈現成 toast,不需要憑證、不需要註冊。
+    //
+    // 代價:氣球提示上沒辦法放「核准 / 拒絕」按鈕,只能點開視窗處理。
+    // 那是這條路的上限,不是疏漏。
+
+    private readonly NotificationGate _gate = new();
+
+    private void Notify()
+    {
+        foreach (var item in _gate.Evaluate(_state.Actions, _state.Servers))
+        {
+            // 需要決定的用警告圖示,純告知的用資訊圖示 —— 顏色在這裡
+            // 是唯一能表達「這件事要你動手」的手段
+            _icon.ShowBalloonTip(
+                timeout: 10_000,
+                tipTitle: item.Title,
+                tipText: item.ActionId is null
+                    ? item.Body
+                    : $"{item.Body}\n點這裡開啟視窗處理。",
+                tipIcon: item.ActionId is null
+                    ? WinForms.ToolTipIcon.Info
+                    : WinForms.ToolTipIcon.Warning);
+        }
+    }
 
     // ── 圖示 ──────────────────────────────────────────────
 

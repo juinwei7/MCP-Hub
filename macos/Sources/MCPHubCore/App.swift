@@ -214,6 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let windows = WindowController(state: state)
         self.windows = windows
         menuBar = MenuBarController(state: state, windows: windows)
+        // 提醒面板上的「開啟」要能把視窗叫出來
+        state.notifier.onOpenWindow = { [weak windows] in windows?.show() }
         state.boot()
         windows.show()   // 第一次啟動先把視窗打開,不然只有選單列圖示會讓人以為沒反應
         installSignalHandlers()

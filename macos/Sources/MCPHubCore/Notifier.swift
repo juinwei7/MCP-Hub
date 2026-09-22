@@ -31,6 +31,9 @@ final class Notifier: NSObject {
     /// 核准 / 拒絕的實際動作由 AppState 提供 —— 通知層不碰業務邏輯。
     var onDecision: ((_ actionID: String, _ approve: Bool) -> Void)?
 
+    /// 純告知類的提醒(例如下游連不上)點「開啟」時要把視窗叫出來。
+    var onOpenWindow: (() -> Void)?
+
     func start() {
         guard available else {
             log("未打包成 .app(沒有 bundle identifier),通知功能停用")
@@ -59,13 +62,53 @@ final class Notifier: NSObject {
                 } else {
                     self?.log(granted ? "通知已授權" : "使用者未允許通知")
                 }
+                self?.diagnose()
             }
         }
     }
 
     /// 診斷用 —— 通知失敗的原因(沒 bundle、沒授權、沒簽章)從畫面上看不出來。
+    ///
+    /// 寫進檔案而不只是 stderr:app 用 open 啟動時 stderr 沒有人接,
+    /// 而那正是唯一會出問題的情境 —— 直接執行 binary 反而是另一條路徑。
     private func log(_ message: String) {
-        FileHandle.standardError.write(Data("[Notifier] \(message)\n".utf8))
+        let line = "[Notifier] \(message)\n"
+        FileHandle.standardError.write(Data(line.utf8))
+        let path = BackendSupervisor.dataDirectory
+            .appendingPathComponent("notifier.log")
+        let stamped = "\(Date().formatted(.iso8601)) \(line)"
+        if let handle = try? FileHandle(forWritingTo: path) {
+            defer { try? handle.close() }
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(stamped.utf8))
+        } else {
+            try? FileManager.default.createDirectory(
+                at: BackendSupervisor.dataDirectory, withIntermediateDirectories: true)
+            try? stamped.write(to: path, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// 把系統回報的通知設定完整記下來。
+    ///
+    /// requestAuthorization 的錯誤訊息只有一句「Notifications are not allowed」,
+    /// 看不出是被使用者關掉、被系統拒絕、還是根本沒註冊成功。這裡把系統自己的
+    /// 判斷逐項印出來,才有辦法分辨。
+    func diagnose() {
+        guard available else {
+            log("診斷:沒有 bundle identifier")
+            return
+        }
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            Task { @MainActor in
+                self.log("""
+                    診斷:authorizationStatus=\(s.authorizationStatus.rawValue) \
+                    alert=\(s.alertSetting.rawValue) \
+                    notificationCenter=\(s.notificationCenterSetting.rawValue) \
+                    bundleID=\(Bundle.main.bundleIdentifier ?? "nil") \
+                    path=\(Bundle.main.bundlePath)
+                    """)
+            }
+        }
     }
 
     // MARK: - 觸發
@@ -84,7 +127,17 @@ final class Notifier: NSObject {
     private func post(id: String, title: String, body: String,
                       category: String? = nil, userInfo: [String: Any] = [:]) {
         guard available, authorized else {
-            log("略過通知「\(title)」:available=\(available) authorized=\(authorized)")
+            // 系統通知拿不到就自己畫一個。以前這裡只記一行 log 就結束 ——
+            // 等於「沒有 Developer ID 就不提醒」,而待確認的票券正是
+            // 最需要主動提醒的東西:它卡在那裡等人,而人不會定時去看選單列。
+            log("系統通知不可用(available=\(available) authorized=\(authorized)),改用面板")
+            let actionID = userInfo["actionID"] as? String
+            AlertPanel.show(
+                title: title,
+                body: body,
+                approve: actionID.map { id in { [weak self] in self?.onDecision?(id, true) } },
+                reject: actionID.map { id in { [weak self] in self?.onDecision?(id, false) } },
+                open: actionID == nil ? { [weak self] in self?.onOpenWindow?() } : nil)
             return
         }
         log("送出通知:\(title)")

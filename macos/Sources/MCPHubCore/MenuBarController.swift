@@ -57,7 +57,9 @@ final class MenuBarController {
             if state.pendingCount > 0 {
                 menu.addItem(header("\(state.pendingCount) 筆待確認"))
                 if !state.notifier.canNotify {
-                    menu.addItem(header("(系統通知未啟用,只能從這裡看到)"))
+                    // 系統通知拿不到(需要 Developer ID 簽章),但不代表不會提醒 ——
+                    // 有新的待確認時會跳自己畫的浮動面板,上面就能決定
+                    menu.addItem(header("(用浮動提醒,系統通知需要簽章)"))
                 }
             }
             menu.addItem(.separator())
