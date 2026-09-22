@@ -21,7 +21,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $PyVersion = '3.11.16'
-$PbsRelease = '20250317'
+# 和 macOS 的 bundle-backend.sh 用同一個 release。兩邊分開維護版號的話,
+# 遲早會變成 macOS 內附 3.11.16、Windows 內附 3.11.11 這種難查的差異。
+$PbsRelease = '20260901'
 $Repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 function Say($m) { Write-Host "-> $m" }
