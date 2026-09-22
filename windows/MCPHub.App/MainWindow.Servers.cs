@@ -66,6 +66,14 @@ public partial class MainWindow
                     Margin = new Thickness(0, 0, 12, 0),
                 });
             }
+            // OAuth 的下游要能重新授權 —— token 會過期,而過期之後除了重新授權
+            // 沒有別的辦法。表單裡本來就寫著「用 OAuth 授權完成登入」,
+            // 沒有這顆按鈕的話那句話是在指一個不存在的東西。
+            if (s.Transport == "http" && s.AuthType == "oauth")
+            {
+                trailing.Children.Add(Ui.Button(this, "OAuth 授權", "Quiet",
+                    () => _ = StartOAuth(slug)));
+            }
             trailing.Children.Add(Ui.Button(this, "編輯", "Quiet", () =>
             {
                 _editingServer = slug;
@@ -274,6 +282,31 @@ public partial class MainWindow
             await _state.RefreshAsync().ConfigureAwait(true);
         }
         catch (HubClient.HubException e) { Fail(e.Message); }
+    }
+
+    /// <summary>
+    /// 開瀏覽器完成 OAuth。授權視窗一定要是使用者自己的瀏覽器 ——
+    /// 內嵌 webview 看起來比較整合,但使用者沒辦法確認網址列,
+    /// 那正是釣魚最愛的形狀。
+    /// </summary>
+    private async Task StartOAuth(string slug)
+    {
+        try
+        {
+            using var c = _state.NewClient();
+            var start = await c.StartOAuthAsync(slug).ConfigureAwait(true);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = start.AuthorizationUrl,
+                UseShellExecute = true,
+            });
+            Fail("已開啟瀏覽器完成授權。授權後回到這裡按「全部重新檢查」。");
+        }
+        catch (HubClient.HubException e) { Fail(e.Message); }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception)
+        {
+            Fail($"打不開瀏覽器:{e.Message}");
+        }
     }
 
     private async Task DeleteServer(string slug)

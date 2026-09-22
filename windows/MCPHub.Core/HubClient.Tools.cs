@@ -121,6 +121,18 @@ public sealed partial class HubClient
     public Task<CheckResult> RefreshServerAsync(string slug, CancellationToken ct = default) =>
         SendAsync<CheckResult>(HttpMethod.Post, $"servers/{slug}/refresh", null, ct);
 
+    public sealed record OAuthStart(
+        [property: JsonPropertyName("authorization_url")] string AuthorizationUrl);
+
+    /// <summary>
+    /// 開始 OAuth 授權。後端回一個授權網址,由這邊用系統瀏覽器打開;
+    /// callback 由後端的 /oauth/callback 接住 —— 那也是為什麼 API 一定要和
+    /// 授權流程在同一個行程裡。
+    /// </summary>
+    public Task<OAuthStart> StartOAuthAsync(string slug, CancellationToken ct = default) =>
+        SendAsync<OAuthStart>(HttpMethod.Post, $"servers/{slug}/oauth/start",
+                              new { }, ct);
+
     // ── 自訂工具 ──────────────────────────────────────────
 
     public Task<IReadOnlyList<CustomTool>> CustomToolsAsync(CancellationToken ct = default) =>
