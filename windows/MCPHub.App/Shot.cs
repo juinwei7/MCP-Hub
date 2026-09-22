@@ -65,10 +65,19 @@ internal static class Shot
             var theme = dark ? "dark" : "light";
             foreach (var section in Enum.GetValues<MainWindow.Section>())
             {
-                var path = Path.Combine(outDir,
-                    $"{section.ToString().ToLowerInvariant()}-{theme}.png");
-                Render(path, section);
+                var key = section.ToString().ToLowerInvariant();
+                var path = Path.Combine(outDir, $"{key}-{theme}.png");
+                Render(path, section, editor: false);
                 log.WriteLine($"已渲染 {path}");
+
+                // 有編輯器的三個區域多渲染一張打開的狀態
+                if (section is MainWindow.Section.Servers or MainWindow.Section.Custom
+                            or MainWindow.Section.Composite)
+                {
+                    var edit = Path.Combine(outDir, $"{key}-edit-{theme}.png");
+                    Render(edit, section, editor: true);
+                    log.WriteLine($"已渲染 {edit}");
+                }
             }
         }
 
@@ -76,7 +85,7 @@ internal static class Shot
         return 0;
     }
 
-    private static void Render(string path, MainWindow.Section section)
+    private static void Render(string path, MainWindow.Section section, bool editor)
     {
         // 每次都重建:主題換過之後,已經建好的控制項雖然會跟著 DynamicResource
         // 更新,但 code-behind 用 FindResource 取到的筆刷是當下那一份 ——
@@ -88,6 +97,7 @@ internal static class Shot
         };
 
         window.Select(section);
+        if (editor) window.OpenNewEditor();
 
         var root = (UIElement)window.Content;
         window.Content = null;   // 先脫離視窗,才能單獨排版與渲染

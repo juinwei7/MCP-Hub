@@ -13,6 +13,22 @@ public partial class MainWindow
     private string? _editingServer;      // null = 沒在編輯;"" = 新增
     private string _toolsServer = "";    // 「工具」那頁目前看的是哪一台
 
+    /// <summary>
+    /// 截圖用:把「新增」的編輯器打開。編輯器是這個 app 最複雜的版面,
+    /// 而示範資料裡沒有自訂 / 複合工具,不主動打開的話那些表單一張圖都渲染不到。
+    /// </summary>
+    internal void OpenNewEditor()
+    {
+        switch (_section)
+        {
+            case Section.Servers: _editingServer = ""; break;
+            case Section.Custom: _customEditing = ""; break;
+            case Section.Composite: _compositeEditing = ""; break;
+            default: return;
+        }
+        Refresh();
+    }
+
     /// <summary>換頁時把各區域自己的暫存狀態清掉,免得切回來看到上次的編輯中內容。</summary>
     private void ResetSectionState()
     {

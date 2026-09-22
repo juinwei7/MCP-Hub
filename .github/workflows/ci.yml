@@ -193,8 +193,9 @@ jobs:
             exit 1
           }
           Get-Content shots\shot.log
-          # 七個區域 × 兩個主題。少一張就代表某個畫面根本沒渲染出來
-          $sections = 'servers','tools','logs','actions','custom','composite','settings'
+          # 七個區域 + 三個編輯器,各兩個主題。少一張就代表某個畫面沒渲染出來
+          $sections = 'servers','tools','logs','actions','custom','composite','settings',
+                      'servers-edit','custom-edit','composite-edit'
           foreach ($t in 'light','dark') {
             foreach ($n in $sections) {
               $f = "shots\$n-$t.png"

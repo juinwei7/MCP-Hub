@@ -77,7 +77,7 @@ public partial class MainWindow
             Refresh();
         });
         Detail.Children.Add(Ui.Field(this, "登入時把 MCP Hub 一起帶起來", startup,
-            "在「啟動」資料夾放一個捷徑。要拿掉隨時可以關,或直接刪掉那個捷徑。"));
+            "寫進登錄檔的 Run 機碼。你在「工作管理員 → 啟動」裡看得到它,也可以從那裡關掉。"));
 
         Detail.Children.Add(Ui.Divider(this));
 

@@ -241,12 +241,91 @@
         </Setter>
     </Style>
 
+    <!-- 整個 template 都要換掉。只設 Foreground 的話,深色模式下會留下一塊
+         系統預設的白色方塊 —— 整個面板只有下拉選單在發光。 -->
     <Style x:Key="HubCombo" TargetType="ComboBox">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
         <Setter Property="Height" Value="30"/>
-        <Setter Property="Padding" Value="8,0,8,0"/>
+        <Setter Property="Padding" Value="9,0,9,0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+                    <Setter Property="Padding" Value="9,5,9,5"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ComboBoxItem">
+                                <Border x:Name="Bg" Background="Transparent"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="Bg" Property="Background"
+                                                Value="{DynamicResource AccentWash}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton x:Name="Toggle" Focusable="False"
+                                      IsChecked="{Binding IsDropDownOpen,
+                                                  RelativeSource={RelativeSource TemplatedParent},
+                                                  Mode=TwoWay}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bg" CornerRadius="5"
+                                            Background="{DynamicResource Sunken}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1">
+                                        <Path x:Name="Arrow" HorizontalAlignment="Right"
+                                              VerticalAlignment="Center" Margin="0,0,10,0"
+                                              Data="M 0 0 L 4 4 L 8 0"
+                                              Stroke="{DynamicResource Ink3}"
+                                              StrokeThickness="1.4"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bg" Property="BorderBrush"
+                                                    Value="{DynamicResource Accent}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="Left"
+                                          IsHitTestVisible="False"
+                                          Content="{TemplateBinding SelectionBoxItem}"/>
+
+                        <Popup x:Name="PART_Popup" AllowsTransparency="True"
+                               Placement="Bottom" Focusable="False"
+                               IsOpen="{TemplateBinding IsDropDownOpen}">
+                            <Border CornerRadius="5" Margin="0,4,0,0"
+                                    Background="{DynamicResource Surface}"
+                                    BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                                    MinWidth="{TemplateBinding ActualWidth}">
+                                <ScrollViewer MaxHeight="260">
+                                    <ItemsPresenter/>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ── 捲軸 ──────────────────────────────────────────── -->
