@@ -26,6 +26,7 @@ final class AppState: ObservableObject {
     var errored: Int { servers.filter { $0.enabled && $0.isErrored }.count }
 
     var pendingCount: Int { actions.filter(\.isWaiting).count }
+    var totalTools: Int { servers.compactMap(\.toolCount).reduce(0, +) }
 
     func boot() {
         notifier.onDecision = { [weak self] id, approve in

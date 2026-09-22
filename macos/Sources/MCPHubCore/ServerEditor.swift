@@ -25,7 +25,7 @@ struct ServerEditor: View {
     @State private var command = ""
     @State private var argsJSON = "[]"
     @State private var envJSON = "{}"
-    @State private var banner: (String, Banner.Kind)?
+    @State private var banner: (String, AlertLine.Kind)?
     @State private var busy = false
 
     private var isNew: Bool { existing == nil }
@@ -39,7 +39,7 @@ struct ServerEditor: View {
             .padding(Style.Space.section)
 
             if let banner {
-                Banner(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
+                AlertLine(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
             }
 
             ScrollView {
@@ -51,7 +51,7 @@ struct ServerEditor: View {
                     if isNew {
                         FormRow(label: "識別碼", hint: "留空自動產生") {
                             TextField(suggestedSlug, text: $slug)
-                                .textFieldStyle(.roundedBorder).font(Style.monoFont)
+                                .textFieldStyle(.roundedBorder).font(Style.Face.monoBody)
                         }
                     }
 
@@ -96,7 +96,7 @@ struct ServerEditor: View {
         VStack(alignment: .leading, spacing: Style.Space.section) {
             FormRow(label: "網址") {
                 TextField("https://example.com/mcp", text: $baseURL)
-                    .textFieldStyle(.roundedBorder).font(Style.monoFont)
+                    .textFieldStyle(.roundedBorder).font(Style.Face.monoBody)
             }
             FormRow(label: "授權") {
                 Picker("", selection: $authType) {
@@ -133,7 +133,7 @@ struct ServerEditor: View {
         VStack(alignment: .leading, spacing: Style.Space.section) {
             FormRow(label: "指令") {
                 TextField("npx", text: $command)
-                    .textFieldStyle(.roundedBorder).font(Style.monoFont)
+                    .textFieldStyle(.roundedBorder).font(Style.Face.monoBody)
             }
             VStack(alignment: .leading, spacing: Style.Space.tight) {
                 Text("參數").font(.caption).foregroundStyle(.secondary)
@@ -219,7 +219,7 @@ struct ServerEditor: View {
                 onDone(created.slug)
                 dismiss()
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }
@@ -228,7 +228,7 @@ struct ServerEditor: View {
         let text = argsJSON.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return [] }
         guard let parsed = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [Any] else {
-            banner = ("參數必須是合法的 JSON 陣列", .error)
+            banner = ("參數必須是合法的 JSON 陣列", .problem)
             return nil
         }
         return parsed
@@ -239,7 +239,7 @@ struct ServerEditor: View {
         if text.isEmpty || text == "{}" { return [:] }
         guard let parsed = try? JSONSerialization.jsonObject(
                 with: Data(text.utf8)) as? [String: Any] else {
-            banner = ("環境變數必須是合法的 JSON 物件", .error)
+            banner = ("環境變數必須是合法的 JSON 物件", .problem)
             return nil
         }
         return parsed

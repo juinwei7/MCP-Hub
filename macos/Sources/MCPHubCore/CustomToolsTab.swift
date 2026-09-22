@@ -9,7 +9,7 @@ struct CustomToolsTab: View {
     @ObservedObject var state: AppState
     @State private var selection: String?
     @State private var draft: ToolDraft?
-    @State private var banner: (String, Banner.Kind)?
+    @State private var banner: (String, AlertLine.Kind)?
     @State private var testResult: String?
     @State private var testArgs = "{}"
     @State private var busy = false
@@ -52,23 +52,17 @@ struct CustomToolsTab: View {
     }
 
     private func row(_ tool: HubClient.CustomTool) -> some View {
-        HStack(spacing: Style.Space.row) {
-            StatusDot(kind: tool.enabled ? .ok : .off,
-                      help: tool.enabled ? "啟用中" : "已停用")
-            VStack(alignment: .leading, spacing: 1) {
-                Text(tool.name).lineLimit(1)
-                Text(tool.urlTemplate)
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
-            }
-            Spacer()
+        HubRow(health: tool.enabled ? .ok : .off,
+               title: tool.name,
+               detail: tool.urlTemplate,
+               dimmed: !tool.enabled) {
+            Pill(text: tool.method, tone: tool.method == "GET" ? .neutral : .accent)
             if tool.needsConfirm {
                 Image(systemName: "checkmark.shield")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.system(size: 11)).foregroundStyle(Palette.warn)
                     .help("呼叫前需要人工確認")
             }
         }
-        .padding(.vertical, 1)
     }
 
     private var groupedTools: [(String, [HubClient.CustomTool])] {
@@ -160,7 +154,7 @@ private struct ToolEditor: View {
     @ObservedObject var state: AppState
     let initial: ToolDraft
     let existing: HubClient.CustomTool?
-    @Binding var banner: (String, Banner.Kind)?
+    @Binding var banner: (String, AlertLine.Kind)?
     @Binding var testResult: String?
     @Binding var testArgs: String
     @Binding var busy: Bool
@@ -178,7 +172,7 @@ private struct ToolEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             if let banner {
-                Banner(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
+                AlertLine(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
             }
 
             ScrollView {
@@ -227,7 +221,7 @@ private struct ToolEditor: View {
                     TextField("weather", text: $d.name).textFieldStyle(.roundedBorder)
                 } else {
                     // 改名等於換一個工具 —— 後端是以 name 為主鍵。
-                    Text(d.name).font(Style.monoFont)
+                    Text(d.name).font(Style.Face.monoBody)
                     Spacer()
                 }
             }
@@ -247,7 +241,7 @@ private struct ToolEditor: View {
             FormRow(label: "網址", hint: "{參數} 會代入") {
                 TextField("https://api.example.com/weather?q={city}",
                           text: $d.urlTemplate)
-                    .textFieldStyle(.roundedBorder).font(Style.monoFont)
+                    .textFieldStyle(.roundedBorder).font(Style.Face.monoBody)
             }
             FormRow(label: "分類", hint: "可留空") {
                 TextField("", text: $d.groupName).textFieldStyle(.roundedBorder)
@@ -268,7 +262,7 @@ private struct ToolEditor: View {
 
             ForEach(d.existingHeaderNames, id: \.self) { key in
                 HStack(spacing: Style.Space.row) {
-                    Text(key).font(Style.monoCaption).frame(width: 150, alignment: .leading)
+                    Text(key).font(Style.Face.mono).frame(width: 150, alignment: .leading)
                     SecureField("已設定(留空不動)",
                                 text: Binding(
                                     get: { d.headerEdits[key] ?? "" },
@@ -336,14 +330,14 @@ private struct ToolEditor: View {
             if let testResult {
                 ScrollView {
                     Text(testResult)
-                        .font(Style.monoCaption)
+                        .font(Style.Face.mono)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Style.Space.row)
                 }
                 .frame(maxHeight: 180)
                 .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: Style.cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Style.radius))
             }
         }
     }
@@ -373,7 +367,7 @@ private struct ToolEditor: View {
                 banner = ("已儲存", .success)
                 onSaved(d.name)
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }
@@ -383,7 +377,7 @@ private struct ToolEditor: View {
         if text.isEmpty { return [] }
         guard let data = text.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
-            banner = ("參數必須是合法的 JSON 陣列", .error)
+            banner = ("參數必須是合法的 JSON 陣列", .problem)
             return nil
         }
         return parsed
@@ -397,7 +391,7 @@ private struct ToolEditor: View {
                 try await state.client.deleteCustomTool(d.name)
                 onDeleted()
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }

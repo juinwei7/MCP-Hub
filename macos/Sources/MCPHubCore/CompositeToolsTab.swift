@@ -12,7 +12,7 @@ struct CompositeToolsTab: View {
     @ObservedObject var state: AppState
     @State private var selection: String?
     @State private var creating = false
-    @State private var banner: (String, Banner.Kind)?
+    @State private var banner: (String, AlertLine.Kind)?
 
     var body: some View {
         HSplitView {
@@ -29,18 +29,14 @@ struct CompositeToolsTab: View {
         VStack(spacing: 0) {
             List(selection: $selection) {
                 ForEach(state.compositeTools) { tool in
-                    HStack(spacing: Style.Space.row) {
-                        StatusDot(kind: tool.enabled ? .ok : .off,
-                                  help: tool.enabled ? "啟用中" : "已停用")
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(tool.name).lineLimit(1)
-                            Text("\(tool.steps.count) 個步驟")
-                                .font(.caption2).foregroundStyle(.secondary)
-                        }
-                        Spacer()
+                    HubRow(health: tool.enabled ? .ok : .off,
+                           title: tool.name,
+                           detail: "\(tool.steps.count) 個步驟",
+                           detailIsMachine: false,
+                           dimmed: !tool.enabled) {
                         if tool.needsConfirm {
                             Image(systemName: "checkmark.shield")
-                                .font(.caption).foregroundStyle(.orange)
+                                .font(.system(size: 11)).foregroundStyle(Palette.warn)
                                 .help("呼叫前需要人工確認")
                         }
                     }
@@ -101,7 +97,7 @@ struct CompositeToolsTab: View {
 private struct CompositeEditor: View {
     @ObservedObject var state: AppState
     let existing: HubClient.CompositeTool?
-    @Binding var banner: (String, Banner.Kind)?
+    @Binding var banner: (String, AlertLine.Kind)?
     let onSaved: (String) -> Void
     let onDeleted: () -> Void
     let onCancel: () -> Void
@@ -122,7 +118,7 @@ private struct CompositeEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             if let banner {
-                Banner(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
+                AlertLine(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
             }
 
             ScrollView {
@@ -194,7 +190,7 @@ private struct CompositeEditor: View {
                 if isNew {
                     TextField("weekly_report", text: $name).textFieldStyle(.roundedBorder)
                 } else {
-                    Text(name).font(Style.monoFont)
+                    Text(name).font(Style.Face.monoBody)
                     Spacer()
                 }
             }
@@ -262,13 +258,13 @@ private struct CompositeEditor: View {
             if let testResult {
                 ScrollView {
                     Text(testResult)
-                        .font(Style.monoCaption).textSelection(.enabled)
+                        .font(Style.Face.mono).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Style.Space.row)
                 }
                 .frame(maxHeight: 200)
                 .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: Style.cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Style.radius))
             }
         }
     }
@@ -296,7 +292,7 @@ private struct CompositeEditor: View {
                 banner = ("已儲存", .success)
                 onSaved(name)
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }
@@ -305,7 +301,7 @@ private struct CompositeEditor: View {
         let text = paramsJSON.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return [] }
         guard let parsed = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [Any] else {
-            banner = ("參數必須是合法的 JSON 陣列", .error)
+            banner = ("參數必須是合法的 JSON 陣列", .problem)
             return nil
         }
         return parsed
@@ -316,7 +312,7 @@ private struct CompositeEditor: View {
         for (i, step) in steps.enumerated() {
             let id = step.stepID.trimmingCharacters(in: .whitespaces)
             guard !id.isEmpty, !step.tool.isEmpty else {
-                banner = ("第 \(i + 1) 步還沒填 id 或工具", .error)
+                banner = ("第 \(i + 1) 步還沒填 id 或工具", .problem)
                 return nil
             }
             let text = step.argsJSON.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -324,7 +320,7 @@ private struct CompositeEditor: View {
             if !text.isEmpty {
                 guard let parsed = try? JSONSerialization.jsonObject(
                         with: Data(text.utf8)) as? [String: Any] else {
-                    banner = ("第 \(i + 1) 步的參數不是合法的 JSON 物件", .error)
+                    banner = ("第 \(i + 1) 步的參數不是合法的 JSON 物件", .problem)
                     return nil
                 }
                 args = parsed
@@ -342,7 +338,7 @@ private struct CompositeEditor: View {
                 try await state.client.deleteCompositeTool(name)
                 onDeleted()
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }
@@ -395,7 +391,7 @@ private struct StepRow: View {
         VStack(alignment: .leading, spacing: Style.Space.tight) {
             HStack(spacing: Style.Space.row) {
                 Text("\(index + 1)")
-                    .font(Style.monoCaption).foregroundStyle(.secondary)
+                    .font(Style.Face.mono).foregroundStyle(.secondary)
                     .frame(width: 16)
 
                 TextField("步驟 id", text: $step.stepID)
@@ -439,7 +435,7 @@ private struct SkillSheet: View {
     @State private var markdown = ""
     @State private var purpose = ""
     @State private var problem = ""
-    @State private var banner: (String, Banner.Kind)?
+    @State private var banner: (String, AlertLine.Kind)?
     @State private var busy = false
 
     var body: some View {
@@ -452,10 +448,10 @@ private struct SkillSheet: View {
             .padding(Style.Space.section)
 
             if let banner {
-                Banner(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
+                AlertLine(text: banner.0, kind: banner.1, onDismiss: { self.banner = nil })
             }
             if !problem.isEmpty {
-                Banner(text: problem, kind: .error)
+                AlertLine(text: problem, kind: .problem)
             }
 
             VStack(alignment: .leading, spacing: Style.Space.row) {
@@ -490,7 +486,7 @@ private struct SkillSheet: View {
             purpose = doc.purpose
             problem = doc.problem
         } catch {
-            banner = (error.localizedDescription, .error)
+            banner = (error.localizedDescription, .problem)
         }
     }
 
@@ -504,7 +500,7 @@ private struct SkillSheet: View {
                 problem = doc.problem
                 banner = ("草稿已儲存", .success)
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }
@@ -523,7 +519,7 @@ private struct SkillSheet: View {
                     banner = ("已匯出到 \(url.lastPathComponent)", .success)
                 }
             } catch {
-                banner = (error.localizedDescription, .error)
+                banner = (error.localizedDescription, .problem)
             }
         }
     }
