@@ -12,7 +12,7 @@ namespace MCPHub.Core;
 /// 端點與欄位名稱與 macOS 版完全相同,兩個平台共用同一份 API 契約;
 /// 這裡若為了 C# 方便而改名,契約就開始分岔了。
 /// </summary>
-public sealed class HubClient : IDisposable
+public sealed partial class HubClient : IDisposable
 {
     private readonly HttpClient _http;
     private readonly JsonSerializerOptions _json = new()
@@ -180,6 +180,36 @@ public sealed class HubClient : IDisposable
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) =>
         SendAsync<T>(HttpMethod.Get, path, null, ct);
+
+    /// <summary>刪除回 204,沒有 body 可以反序列化。</summary>
+    private async Task SendVoidAsync(HttpMethod method, string path,
+                                     object? body, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            req.Content = new StringContent(
+                JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        }
+
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            throw new HubException($"連線失敗:{e.Message}");
+        }
+
+        using (resp)
+        {
+            if (resp.IsSuccessStatusCode) return;
+            var text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HubException(ErrorMessage(text, resp.StatusCode),
+                                   TryParseError(text)?.Error);
+        }
+    }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path,
                                        object? body, CancellationToken ct)

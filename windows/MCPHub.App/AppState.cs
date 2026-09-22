@@ -24,6 +24,20 @@ public sealed class AppState : IDisposable
     public bool Paused { get; private set; }
     public string? LastError { get; private set; }
 
+    public IReadOnlyList<HubClient.CustomTool> CustomTools { get; private set; } = [];
+    public IReadOnlyList<HubClient.CompositeTool> CompositeTools { get; private set; } = [];
+    public IReadOnlyList<HubClient.StepTool> StepTools { get; private set; } = [];
+    public HubClient.CategoryOverview? Categories { get; private set; }
+    public HubClient.ClaudePreview? ClaudePreview { get; private set; }
+    public HubClient.LogPage? Logs { get; private set; }
+    public bool LogsErrorsOnly { get; private set; }
+
+    /// <summary>每台下游的工具清單各自載入 —— 一次全抓要對每台開連線,很慢。</summary>
+    private readonly Dictionary<string, IReadOnlyList<HubClient.Tool>> _tools = [];
+
+    public IReadOnlyList<HubClient.Tool>? ToolsFor(string slug) =>
+        _tools.TryGetValue(slug, out var t) ? t : null;
+
     /// <summary>狀態變了,畫面該重畫。一律在 UI 執行緒上發出。</summary>
     public event Action? Changed;
 
@@ -71,10 +85,16 @@ public sealed class AppState : IDisposable
             var servers = await c.ServersAsync(_cts.Token).ConfigureAwait(false);
             var actions = await c.ActionsAsync(_cts.Token).ConfigureAwait(false);
             var paused = await c.PausedAsync(_cts.Token).ConfigureAwait(false);
+            // 工具數也一起抓:側邊欄一直顯示著這兩個計數,只在點進去時才載入的話,
+            // 在那之前它們會是 0 —— 錯的數字比沒有數字更糟
+            var custom = await c.CustomToolsAsync(_cts.Token).ConfigureAwait(false);
+            var composite = await c.CompositeToolsAsync(_cts.Token).ConfigureAwait(false);
 
             Servers = servers;
             Actions = actions;
             Paused = paused;
+            CustomTools = custom;
+            CompositeTools = composite;
             LastError = null;
         }
         catch (OperationCanceledException) { return; }
@@ -151,6 +171,78 @@ public sealed class AppState : IDisposable
         catch (OperationCanceledException) { return; }
         catch (HubClient.HubException e) { LastError = e.Message; }
         await RefreshAsync().ConfigureAwait(false);
+    }
+
+    // ── 各區域自己的資料 ──────────────────────────────────
+
+    public async Task LoadToolsAsync(string slug)
+    {
+        try
+        {
+            using var c = NewClient();
+            _tools[slug] = await c.ToolsAsync(slug, _cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (HubClient.HubException e) { LastError = e.Message; }
+        Raise();
+    }
+
+    public async Task LoadLogsAsync(int page = 1, bool errorsOnly = false)
+    {
+        try
+        {
+            using var c = NewClient();
+            Logs = await c.LogsAsync(page, 50, errorsOnly, _cts.Token).ConfigureAwait(false);
+            LogsErrorsOnly = errorsOnly;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (HubClient.HubException e) { LastError = e.Message; }
+        Raise();
+    }
+
+    public async Task LoadCategoriesAsync(bool force = false)
+    {
+        if (Categories is not null && !force) return;
+        try
+        {
+            using var c = NewClient();
+            Categories = await c.CategoriesAsync(_cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (HubClient.HubException e) { LastError = e.Message; }
+        Raise();
+    }
+
+    public async Task LoadClaudePreviewAsync(bool force = false)
+    {
+        if (ClaudePreview is not null && !force) return;
+        try
+        {
+            using var c = NewClient();
+            ClaudePreview = await c.PeekClaudeConfigAsync(_cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (HubClient.HubException e) { LastError = e.Message; }
+        Raise();
+    }
+
+    public async Task LoadStepToolsAsync()
+    {
+        try
+        {
+            using var c = NewClient();
+            StepTools = await c.StepToolsAsync(_cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (HubClient.HubException e) { LastError = e.Message; }
+        Raise();
+    }
+
+    /// <summary>把一則訊息送進視窗層級的警示線。錯誤是全域的,不屬於某一頁。</summary>
+    public void Report(string message)
+    {
+        LastError = message;
+        Raise();
     }
 
     public void ClearError()

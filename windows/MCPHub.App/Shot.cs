@@ -42,22 +42,32 @@ internal static class Shot
             log.WriteLine($"原因:{state.Supervisor.FailureReason}");
         }
 
-        // 讓第一輪輪詢把資料填進來
+        // 讓第一輪輪詢把資料填進來,順便把各區域各自載入的東西也抓齊
         await state.RefreshAsync().ConfigureAwait(true);
+        await state.LoadLogsAsync().ConfigureAwait(true);
+        await state.LoadCategoriesAsync().ConfigureAwait(true);
+        await state.LoadStepToolsAsync().ConfigureAwait(true);
+        await state.LoadClaudePreviewAsync().ConfigureAwait(true);
+        foreach (var s in state.Servers.Where(x => x.Enabled))
+        {
+            await state.LoadToolsAsync(s.Slug).ConfigureAwait(true);
+        }
 
         log.WriteLine($"下游 {state.Servers.Count} 台、待確認 {state.PendingCount} 筆");
 
         // 兩個主題 × 兩個畫面。深色不是把淺色反轉是另一組色值,而設計的主張
         // 全在「列」上 —— 空狀態什麼都驗不到。
+        // 每個區域、兩個主題都渲染。深色不是把淺色反轉是另一組色值,
+        // 而每個畫面的版面都不一樣 —— 只看一張什麼都保證不了。
         foreach (var dark in new[] { false, true })
         {
             ThemeManager.Force(dark);
             var theme = dark ? "dark" : "light";
-            foreach (var actions in new[] { false, true })
+            foreach (var section in Enum.GetValues<MainWindow.Section>())
             {
-                var name = $"{(actions ? "actions" : "servers")}-{theme}";
-                var path = Path.Combine(outDir, $"{name}.png");
-                Render(path, actions);
+                var path = Path.Combine(outDir,
+                    $"{section.ToString().ToLowerInvariant()}-{theme}.png");
+                Render(path, section);
                 log.WriteLine($"已渲染 {path}");
             }
         }
@@ -66,7 +76,7 @@ internal static class Shot
         return 0;
     }
 
-    private static void Render(string path, bool actions)
+    private static void Render(string path, MainWindow.Section section)
     {
         // 每次都重建:主題換過之後,已經建好的控制項雖然會跟著 DynamicResource
         // 更新,但 code-behind 用 FindResource 取到的筆刷是當下那一份 ——
@@ -77,7 +87,7 @@ internal static class Shot
             Height = Height,
         };
 
-        if (actions) window.SelectActions();
+        window.Select(section);
 
         var root = (UIElement)window.Content;
         window.Content = null;   // 先脫離視窗,才能單獨排版與渲染

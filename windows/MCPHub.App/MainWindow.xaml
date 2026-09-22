@@ -29,39 +29,26 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Margin="5,16,5,0">
-                <TextBlock Text="監控" Style="{DynamicResource Meta}"
-                           Margin="10,0,0,5"/>
+            <StackPanel Grid.Row="0" Margin="5,16,5,0" x:Name="NavHost">
+                <TextBlock Text="監控" Style="{DynamicResource Meta}" Margin="10,0,0,5"/>
                 <RadioButton x:Name="NavServers" Style="{DynamicResource NavItem}"
-                             GroupName="Nav" IsChecked="True" Checked="OnNavChanged">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="NavServersLabel" Text="下游"
-                                   FontFamily="Segoe UI, Microsoft JhengHei UI"
-                                   FontSize="13" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="NavServersCount" Grid.Column="1"
-                                   Style="{DynamicResource MonoNumber}"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-                </RadioButton>
+                             GroupName="Nav" IsChecked="True" Checked="OnNavChanged"/>
+                <RadioButton x:Name="NavTools" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" Checked="OnNavChanged"/>
+                <RadioButton x:Name="NavLogs" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" Checked="OnNavChanged"/>
                 <RadioButton x:Name="NavActions" Style="{DynamicResource NavItem}"
-                             GroupName="Nav" Checked="OnNavChanged">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="NavActionsLabel" Text="待確認"
-                                   FontFamily="Segoe UI, Microsoft JhengHei UI"
-                                   FontSize="13" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="NavActionsCount" Grid.Column="1"
-                                   Style="{DynamicResource MonoNumber}"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-                </RadioButton>
+                             GroupName="Nav" Checked="OnNavChanged"/>
+
+                <TextBlock Text="工具" Style="{DynamicResource Meta}" Margin="10,14,0,5"/>
+                <RadioButton x:Name="NavCustom" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" Checked="OnNavChanged"/>
+                <RadioButton x:Name="NavComposite" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" Checked="OnNavChanged"/>
+
+                <TextBlock Text="其他" Style="{DynamicResource Meta}" Margin="10,14,0,5"/>
+                <RadioButton x:Name="NavSettings" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" Checked="OnNavChanged"/>
             </StackPanel>
 
             <!--
@@ -120,10 +107,27 @@
                             HorizontalAlignment="Right" VerticalAlignment="Center"/>
             </Grid>
 
-            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="Rows"/>
-            </ScrollViewer>
+            <!-- 主從版面。沒有 detail 時右邊兩欄收成 0,清單就佔滿 ——
+                 空的清單欄配上空的編輯區是同一件事講兩次。 -->
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="ListCol" Width="*"/>
+                    <ColumnDefinition x:Name="SplitCol" Width="0"/>
+                    <ColumnDefinition x:Name="DetailCol" Width="0"/>
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="Rows"/>
+                </ScrollViewer>
+
+                <Rectangle Grid.Column="1" Fill="{DynamicResource Line}"/>
+
+                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="Detail" Margin="18,16,18,18"/>
+                </ScrollViewer>
+            </Grid>
 
             <Border Grid.Row="4" BorderThickness="0,1,0,0"
                     BorderBrush="{DynamicResource LineSoft}" Padding="18,8,18,8">

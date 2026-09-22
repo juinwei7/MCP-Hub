@@ -210,6 +210,45 @@
         </Setter>
     </Style>
 
+    <!-- ── 輸入 ──────────────────────────────────────────── -->
+    <!-- 預設的 TextBox 在深色底上是白底黑字,整個面板只有輸入框在發光 -->
+
+    <Style x:Key="HubTextBox" TargetType="TextBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource Ink}"/>
+        <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
+        <Setter Property="Padding" Value="8,5,8,5"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Bg" CornerRadius="5"
+                            Background="{DynamicResource Sunken}"
+                            BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bg" Property="BorderBrush"
+                                    Value="{DynamicResource Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="HubCombo" TargetType="ComboBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="Padding" Value="8,0,8,0"/>
+    </Style>
+
     <!-- ── 捲軸 ──────────────────────────────────────────── -->
     <!-- 預設捲軸有灰色軌道底,在深色面板上像一條突兀的亮帶 -->
 
