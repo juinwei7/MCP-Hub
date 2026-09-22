@@ -37,7 +37,13 @@ final class MenuBarController {
             // 總開關擺在最上面,和下游清單之間隔一條線 —— 它管的是整個 Hub,
             // 不是其中某一台。
             menu.addItem(.separator())
-            menu.addItem(action(state.paused ? "繼續" : "暫停", #selector(togglePaused)))
+            let pause = action(state.paused ? "繼續" : "暫停", #selector(togglePaused))
+            // 快捷鍵標在這裡是唯一會被看到的地方 —— 沒標的話沒人知道它存在
+            if GlobalHotKey.shared.isRegistered {
+                pause.keyEquivalent = "p"
+                pause.keyEquivalentModifierMask = [.control, .option, .command]
+            }
+            menu.addItem(pause)
 
             menu.addItem(.separator())
             if state.servers.isEmpty {

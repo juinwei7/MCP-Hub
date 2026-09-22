@@ -59,6 +59,12 @@ struct MainWindow: View {
                                       actionTitle: "繼續",
                                       action: { Task { await state.setPaused(false) } })
                         }
+                        // 錯誤也是全域的:在設定頁打開快捷鍵卻註冊失敗時,
+                        // 只掛在下游那頁的話,人就在設定頁反而看不到原因。
+                        if let err = state.lastError {
+                            AlertLine(text: err, kind: .problem,
+                                      onDismiss: { state.lastError = nil })
+                        }
                         content
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -259,10 +265,6 @@ private struct ServersView: View {
                     Label("新增下游", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
-            }
-
-            if let err = state.lastError {
-                AlertLine(text: err, kind: .problem, onDismiss: { state.lastError = nil })
             }
 
             // 有事才浮上來,而且直接帶修復動作

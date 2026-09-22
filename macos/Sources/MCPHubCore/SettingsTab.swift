@@ -9,9 +9,10 @@ import UniformTypeIdentifiers
 /// 而不是佔掉主分頁列的四個位置。
 struct SettingsTab: View {
     @ObservedObject var state: AppState
-    @State private var section: Section = .importServers
+    @State private var section: Section = .general
 
     enum Section: String, CaseIterable, Identifiable {
+        case general = "一般"
         case importServers = "匯入下游"
         case openapi = "OpenAPI 匯入"
         case catalog = "服務目錄"
@@ -22,6 +23,7 @@ struct SettingsTab: View {
 
         var icon: String {
             switch self {
+            case .general: return "slider.horizontal.3"
             case .importServers: return "square.and.arrow.down"
             case .openapi: return "doc.badge.gearshape"
             case .catalog: return "books.vertical"
@@ -50,6 +52,7 @@ struct SettingsTab: View {
 
             Group {
                 switch section {
+                case .general: GeneralView(state: state)
                 case .importServers: ImportServersView(state: state)
                 case .openapi: OpenAPIImportView(state: state)
                 case .catalog: CatalogView(state: state)
@@ -61,6 +64,67 @@ struct SettingsTab: View {
         }
     }
 }
+
+// ── 一般 ──────────────────────────────────────────────────
+/// app 本身的偏好。
+///
+/// 這些以前只存在於選單列的選單裡 —— 但選單列擠滿時圖示就看不到,
+/// 那等於沒有地方可以調。
+private struct GeneralView: View {
+    @ObservedObject var state: AppState
+    @State private var loginItemOn = LoginItem.isEnabled
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Style.Space.block) {
+                VStack(alignment: .leading, spacing: Style.Space.row) {
+                    Text("全域快捷鍵").font(.headline)
+                    HStack(spacing: Style.Space.row) {
+                        Text(GlobalHotKey.displayName)
+                            .font(Style.Face.monoBody)
+                            .padding(.horizontal, Style.Space.tight)
+                            .padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(Palette.sunken))
+                        Text("切換暫停 / 繼續")
+                            .font(Style.Face.body).foregroundStyle(Palette.ink2)
+                        Spacer()
+                        HubSwitch(isOn: Binding(
+                            get: { state.hotKeyEnabled },
+                            set: { state.hotKeyEnabled = $0; state.applyHotKeySetting() }))
+                    }
+                    Text("不用開視窗也不用找選單列圖示。全域快捷鍵會從所有 app 手上搶走這個組合,"
+                         + "所以刻意選了三個修飾鍵;真的撞到別的軟體就把它關掉。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: Style.Space.row) {
+                    Text("開機時自動啟動").font(.headline)
+                    HStack {
+                        Text(LoginItem.available ? "登入時把 MCP Hub 一起帶起來"
+                                                 : "需要以 app 形式執行才能設定")
+                            .font(Style.Face.body).foregroundStyle(Palette.ink2)
+                        Spacer()
+                        HubSwitch(isOn: Binding(
+                            get: { loginItemOn },
+                            set: { want in
+                                if let problem = LoginItem.set(want) {
+                                    state.lastError = problem
+                                } else {
+                                    loginItemOn = want
+                                }
+                            }))
+                        .disabled(!LoginItem.available)
+                    }
+                }
+            }
+            .padding(Style.Space.section)
+        }
+        .onAppear { loginItemOn = LoginItem.isEnabled }
+    }
+}
+
 
 // ── 匯入下游 ──────────────────────────────────────────────
 private struct ImportServersView: View {

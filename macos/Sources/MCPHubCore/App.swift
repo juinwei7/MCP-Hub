@@ -17,6 +17,12 @@ final class AppState: ObservableObject {
     @Published var lastError: String?
     /// Hub 層級的暫停。和「把每台下游停用」不同 —— 它不動下游的啟用狀態。
     @Published var paused = false
+    /// 預設開啟 —— 這個快捷鍵存在的理由就是選單列圖示可能看不到,
+    /// 要人先找到設定才能打開它,等於沒解決問題。
+    @Published var hotKeyEnabled =
+        UserDefaults.standard.object(forKey: AppState.hotKeyDefaultsKey) as? Bool ?? true
+
+    fileprivate static let hotKeyDefaultsKey = "globalHotKeyEnabled"
 
     let supervisor = BackendSupervisor()
     let notifier = Notifier()
@@ -41,7 +47,26 @@ final class AppState: ObservableObject {
                 if state == .ready { self?.startRefreshing() }
             }
         }
+        applyHotKeySetting()
         supervisor.start()
+    }
+
+    /// 快捷鍵只在後端就緒時才有意義,但註冊本身跟後端無關 —— 先註冊,
+    /// 按下去時如果還沒就緒就什麼也不做,比「有時候有、有時候沒有」好預測。
+    func applyHotKeySetting() {
+        UserDefaults.standard.set(hotKeyEnabled, forKey: Self.hotKeyDefaultsKey)
+        guard hotKeyEnabled else {
+            GlobalHotKey.shared.unregister()
+            return
+        }
+        if let problem = GlobalHotKey.shared.register({ [weak self] in
+            guard let self, case .ready = self.backend else { return }
+            Task { await self.setPaused(!self.paused) }
+        }) {
+            lastError = problem
+            hotKeyEnabled = false   // 註冊失敗就別讓設定顯示成「開著」
+            UserDefaults.standard.set(false, forKey: Self.hotKeyDefaultsKey)
+        }
     }
 
     private func startRefreshing() {
