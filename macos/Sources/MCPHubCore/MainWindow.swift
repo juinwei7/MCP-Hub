@@ -94,9 +94,37 @@ struct MainWindow: View {
                 NavItem(section: .settings, count: nil, selection: $section)
             }
             Spacer(minLength: 0)
+            supplySwitch
         }
         .padding(.horizontal, Style.Space.tight)
         .padding(.vertical, Style.Space.section)
+    }
+
+    /// Hub 的總開關。
+    ///
+    /// 選單列也有一顆,但那不能是唯一的路 —— 選單列擠滿時 macOS 會把圖示擠掉,
+    /// Ice / Bartender 這類工具也會收起來。這顆管的是整個 app 的狀態,
+    /// 所以擺在側邊欄底部:每個畫面都看得到,又不跟任何一頁的內容混在一起。
+    private var supplySwitch: some View {
+        VStack(spacing: 0) {
+            Divider().padding(.bottom, Style.Space.row)
+            HStack(spacing: Style.Space.row) {
+                Circle()
+                    .fill(state.paused ? Palette.off : Palette.ok)
+                    .frame(width: 6, height: 6)
+                Text(state.paused ? "已暫停" : "供應中")
+                    .font(Style.Face.body)
+                    .foregroundStyle(state.paused ? Palette.ink3 : Palette.ink2)
+                Spacer(minLength: Style.Space.tight)
+                // 開 = 供應中,和下游那些開關同方向 —— 反過來標「暫停」會讓
+                // 同一個視窗裡出現兩種相反的開關語意。
+                HubSwitch(isOn: Binding(
+                    get: { !state.paused },
+                    set: { on in Task { await state.setPaused(!on) } }))
+            }
+            .padding(.horizontal, Style.Space.row)
+            .help(state.paused ? "Claude 目前看不到任何工具" : "Claude 可以看到 Hub 的工具")
+        }
     }
 
     private func navGroup<C: View>(_ title: String,

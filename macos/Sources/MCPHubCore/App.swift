@@ -197,6 +197,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false   // 關掉視窗不等於結束 —— 選單列還在
     }
 
+    /// 在 Finder 再開一次 app 就把視窗叫回來。
+    ///
+    /// 沒有這個的話會有一個走不出來的死角:LSUIElement 沒有 Dock 圖示,關掉視窗
+    /// 又不會結束程序,而選單列圖示在擁擠的選單列上(或被 Ice / Bartender 這類
+    /// 工具收起來時)可能根本看不到 —— app 跑著,但使用者沒有任何入口。
+    /// 預設的 reopen 行為救不回來:視窗物件還在(isReleasedWhenClosed = false),
+    /// 但 AppKit 不會自己把它 order front。
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { windows?.show() }
+        return true
+    }
+
     /// 從終端機跑時會收到 SIGINT/SIGTERM,預設行為不會經過 applicationWillTerminate。
     /// SIGKILL 攔不住,那條路徑靠 PID 檔在下次啟動時接管。
     private func installSignalHandlers() {
