@@ -125,7 +125,9 @@
 
                 <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="Detail" Margin="18,16,18,18"/>
+                    <StackPanel x:Name="Detail" Margin="18,16,18,18"
+                                MaxWidth="620"
+                                HorizontalAlignment="Left"/>
                 </ScrollViewer>
             </Grid>
 

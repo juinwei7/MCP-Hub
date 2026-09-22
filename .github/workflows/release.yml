@@ -4,7 +4,9 @@ name: Release
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
-# 目前只出 Apple Silicon 版。
+# 產出兩個東西:macOS 的 DMG(Apple Silicon)與 Windows 的 ZIP(x64)。
+#
+# macOS 目前只出 Apple Silicon 版。
 #
 # 原本是 arm64 / x86_64 兩個格子,但 GitHub 的免費 Intel macOS runner
 # (macos-13)已經退役 —— 那個 job 排了二十分鐘連 runner 都沒分配到。
@@ -68,6 +70,24 @@ jobs:
         # 孤兒程序是這個專案真實發生過的問題,正式版更不能帶著它出去
         working-directory: macos
         run: ./scripts/acceptance.sh
+
+  # Windows 的測試要在 Windows 上跑:Job Object 與 TcpTable 都是 P/Invoke,
+  # 在別的平台上根本執行不到。
+  verify-windows:
+    name: 發版前驗證 (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: 測試
+        working-directory: windows
+        run: dotnet test MCPHub.Core.Tests/MCPHub.Core.Tests.csproj -c Release
 
   # ── 打包 ─────────────────────────────────────────────────
   build:
@@ -224,10 +244,88 @@ jobs:
           path: macos/*.dmg
           if-no-files-found: error
 
+  # ── Windows 打包 ─────────────────────────────────────────
+  # 自足發佈:內附 .NET runtime 與 Python runtime,使用者解開就能跑,
+  # 不必先裝 .NET 也不必先裝 Python。代價是體積,但對一個自己用的工具來說,
+  # 「下載完就能開」比「小 50MB」值錢得多。
+  build-windows:
+    name: 打包 (Windows x64)
+    needs: verify-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: 解析版本號
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::tag「$TAG」的版本號 $VERSION 不是 x / x.y / x.y.z 的形式"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: 發佈
+        working-directory: windows
+        run: |
+          dotnet publish MCPHub.App/MCPHub.App.csproj -c Release -r win-x64 `
+            --self-contained true `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -o publish
+
+      - name: 內附 Python 後端
+        working-directory: windows
+        shell: pwsh
+        run: pwsh -File scripts/bundle-backend.ps1 -Dest publish
+
+      - name: 驗證產出
+        working-directory: windows
+        shell: pwsh
+        run: |
+          # 驗的是「要送出去的那一份」,不是建置中間產物
+          if (-not (Test-Path 'publish\MCPHub.exe')) { Write-Host '::error::缺少 MCPHub.exe'; exit 1 }
+          if (-not (Test-Path 'publish\backend\python.exe')) { Write-Host '::error::缺少內附的 Python'; exit 1 }
+          $v = (Get-Item 'publish\MCPHub.exe').VersionInfo.FileVersion
+          Write-Host "執行檔版本 $v"
+          if (-not $v.StartsWith('${{ steps.ver.outputs.version }}')) {
+            Write-Host "::error::執行檔版本 $v 與 tag 不符"; exit 1
+          }
+          $env:PYTHONPATH = (Resolve-Path 'publish\backend')
+          & 'publish\backend\python.exe' -c "import gateway.web, gateway.hub_server; print('後端可匯入')"
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::內附後端匯入失敗'; exit 1 }
+
+      - name: 壓成 ZIP
+        working-directory: windows
+        shell: pwsh
+        run: |
+          $name = "MCP-Hub-${{ steps.ver.outputs.version }}-win-x64"
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+          Move-Item publish "stage\MCP Hub"
+          Compress-Archive -Path "stage\MCP Hub" -DestinationPath "$name.zip" -CompressionLevel Optimal
+          Write-Host ("{0}.zip  {1:N0} MB" -f $name, ((Get-Item "$name.zip").Length / 1MB))
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: windows/*.zip
+          if-no-files-found: error
+
   # ── 建立 Release ─────────────────────────────────────────
   publish:
     name: 建立 Release
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -250,13 +348,22 @@ jobs:
           {
             echo "## 安裝"
             echo
+            echo "#### macOS"
+            echo
             echo "下載 \`MCP-Hub-${TAG#v}-arm64.dmg\`,打開後把 MCP Hub 拖進 Applications。"
             echo
-            echo "**只支援 Apple Silicon(M1 以後)**,而且需要 macOS 14 以上。"
+            echo "**只支援 Apple Silicon(M1 以後)**,需要 macOS 14 以上。"
             echo "不確定的話:左上角  → 關於這台 Mac,看「晶片」那一行。"
             echo
             echo "Intel Mac 目前沒有預先打包的版本 —— GitHub 的免費 Intel runner 已經退役。"
             echo "需要的話可以在 Intel 機器上自己建:\`cd macos && make dist\`。"
+            echo
+            echo "#### Windows"
+            echo
+            echo "下載 \`MCP-Hub-${TAG#v}-win-x64.zip\`,解開後執行裡面的 \`MCPHub.exe\`。"
+            echo "內附 .NET 與 Python,不必另外安裝任何東西。需要 Windows 10 1809 以上。"
+            echo
+            echo "SmartScreen 可能會擋(沒有程式碼簽章):按「其他資訊」→「仍要執行」。"
             echo
             if [ "$SIGNED" != "true" ]; then
               echo "### 第一次打開會被系統擋下來"
