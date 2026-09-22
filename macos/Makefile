@@ -33,6 +33,9 @@ app: release
 	rm -rf "$(APP)"
 	mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
 	cp "$(BIN)" "$(APP)/Contents/MacOS/MCPHub"
+	@# 剝掉符號表:3.3M → 1.2M。debug 符號對使用者沒有用處,而這包是要下載的。
+	@# 一定要在簽章之前 —— 簽章會把二進位封印起來,之後再改就破壞封印。
+	strip -S -x "$(APP)/Contents/MacOS/MCPHub"
 	cp Resources/Info.plist "$(APP)/Contents/Info.plist"
 	@# 沒有這行,Dock、Finder、Alt-Tab 裡都是那個空白的預設圖示。
 	@# 圖示由 design/MarkRenderer.swift 產生,改了要重跑它。

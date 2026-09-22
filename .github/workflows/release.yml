@@ -199,9 +199,11 @@ jobs:
           cp -R "build/MCP Hub.app" "$STAGE/"
           # 拖進去就安裝 —— 沒有這個捷徑,多數人會直接在下載資料夾裡執行
           ln -s /Applications "$STAGE/Applications"
-          # ULFO(lzfse)比預設的 zlib 小得多,而且 macOS 14 以上都支援
+          # ULMO(lzma)是這幾種格式裡最小的:實測比 ULFO 再小 3MB。
+          # 解壓縮比較慢,但那是一次性的安裝成本,而下載是每個人都要付的。
+          # 需要 macOS 10.15+,而這個 app 本來就要 14。
           hdiutil create -volname "MCP Hub" -srcfolder "$STAGE" \
-            -ov -format ULFO "$NAME.dmg"
+            -ov -format ULMO "$NAME.dmg"
           echo "DMG_NAME=$NAME" >> "$GITHUB_ENV"
 
       - name: 驗證產出的 DMG

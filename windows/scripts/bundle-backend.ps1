@@ -78,12 +78,34 @@ Get-ChildItem -Recurse -Force -Directory -Filter '__pycache__' $gateway |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 # ── 精簡 ─────────────────────────────────────────────────
-# 測試、IDLE、tkinter 都不需要跟著發佈,體積差很多
+# 使用者要下載這包,每一 MB 都是別人的時間。和 macOS 那邊砍同一批東西:
+#   pip / setuptools / ensurepip   依賴打包時就裝好,app 不會再安裝東西
+#   tcl / tk / tkinter             後端沒有 GUI
+#   include                        C 標頭檔,執行期用不到
+#   distutils / lib2to3 / pydoc_data   都沒有被匯入
+# 砍完會跑一次匯入驗證,少砍到東西當場就會失敗。
 Say "精簡不需要的檔案"
-foreach ($junk in 'Lib\idlelib', 'Lib\tkinter', 'Lib\turtledemo', 'Lib\test', 'tcl') {
+
+foreach ($junk in 'Lib\idlelib', 'Lib\tkinter', 'Lib\turtledemo', 'Lib\test',
+                  'Lib\ensurepip', 'Lib\distutils', 'Lib\lib2to3', 'Lib\pydoc_data',
+                  'Lib\site-packages\pip', 'Lib\site-packages\setuptools',
+                  'Lib\site-packages\pkg_resources',
+                  'tcl', 'include', 'share') {
     $path = Join-Path $backend $junk
     if (Test-Path $path) { Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue }
 }
+# pip / setuptools 的 metadata 與啟動器
+Get-ChildItem -Path (Join-Path $backend 'Lib\site-packages') -Filter '*.dist-info' `
+              -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^(pip|setuptools)-' } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path (Join-Path $backend 'Scripts') -Filter 'pip*' `
+              -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+# 第三方套件自己帶的測試
+Get-ChildItem -Recurse -Force -Directory $backend -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -in 'test','tests' } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 Get-ChildItem -Recurse -Force -Directory -Filter '__pycache__' $backend |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 

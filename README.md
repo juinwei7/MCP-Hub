@@ -39,7 +39,7 @@ Hub 的雙角色:**對 Claude 是 MCP Server;對下游是 MCP Client**(連上就
 
 | 平台 | 檔案 | 需求 |
 |---|---|---|
-| macOS(Apple Silicon) | `MCP-Hub-<版本>-arm64.dmg` | macOS 14+ |
+| macOS(Apple Silicon) | `MCP-Hub-<版本>-arm64.dmg`(約 29 MB) | macOS 14+ |
 | Windows(x64) | `MCP-Hub-<版本>-win-x64.zip` | Windows 10 1809+ |
 
 **第一次打開會被系統擋下來**,因為沒有付費的程式碼簽章:

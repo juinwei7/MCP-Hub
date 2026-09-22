@@ -87,15 +87,52 @@ rsync -a --delete \
     "$REPO/gateway/" "$BACKEND/gateway/"
 
 # ── 精簡 ─────────────────────────────────────────────────
-# 測試、pip 快取、.pyc 都不需要跟著發佈,體積差很多
+# 使用者要下載這包,所以每一 MB 都是別人的時間。全部都實際量過才砍:
+#
+#   libpython3.11.dylib  16M  bin/python3.11 是靜態連結的(otool -L 沒有這一行),
+#                             而且沒有任何 .so 連到它 —— 純多餘
+#   pip/setuptools/ensurepip 13M  依賴在打包時就裝好了,送出去的 app 不會再安裝東西
+#   tcl / tk             6M   只有 _tkinter 用得到,而後端沒有 GUI
+#   include/             1M   C 標頭檔,執行期用不到
+#   distutils/lib2to3/pydoc_data  2M  都沒有被匯入
+#
+# 砍完會跑一次匯入驗證,少砍到東西當場就會失敗。
 say "精簡不需要的檔案"
-find "$BACKEND" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
-find "$BACKEND" -type d -name 'test' -path '*/lib/python*' -prune -exec rm -rf {} + 2>/dev/null || true
-find "$BACKEND" -type d -name 'tests' -path '*/lib/python*' -prune -exec rm -rf {} + 2>/dev/null || true
-# lib 目錄是 python3.11,不帶 patch 版號
+
 LIBDIR="$BACKEND/lib/python${PY_VERSION%.*}"
-rm -rf "$LIBDIR/idlelib" "$LIBDIR/tkinter" "$LIBDIR/turtledemo" \
-       "$BACKEND/share" 2>/dev/null || true
+
+# 1. 多餘的 libpython。靜態連結的直譯器不需要它。
+rm -f "$BACKEND/lib/libpython"*.dylib "$BACKEND/lib/libpython"*.a
+
+# 2. 打包工具鏈
+rm -rf "$LIBDIR/ensurepip" "$LIBDIR/site-packages/pip" \
+       "$LIBDIR/site-packages/setuptools" "$LIBDIR/site-packages/pkg_resources" \
+       "$LIBDIR/site-packages"/pip-*.dist-info \
+       "$LIBDIR/site-packages"/setuptools-*.dist-info
+rm -f "$BACKEND/bin/pip" "$BACKEND/bin/pip3" "$BACKEND/bin"/pip3.*
+
+# 3. Tk 整組 —— 函式庫、模組、綁定
+rm -rf "$BACKEND/lib/tcl"* "$BACKEND/lib/tk"* "$LIBDIR/tkinter" "$LIBDIR/turtledemo"
+rm -f "$BACKEND/lib/libtcl"*.dylib "$BACKEND/lib/libtk"*.dylib \
+      "$LIBDIR/lib-dynload/_tkinter"*.so "$LIBDIR/turtle.py"
+
+# 4. 開發用的東西
+rm -rf "$BACKEND/include" "$BACKEND/share" "$LIBDIR/config-"* \
+       "$LIBDIR/idlelib" "$LIBDIR/distutils" "$LIBDIR/lib2to3" "$LIBDIR/pydoc_data"
+
+# 5. 測試套件(stdlib 與第三方的都算)
+find "$BACKEND" -type d \( -name 'test' -o -name 'tests' \) -prune -exec rm -rf {} + 2>/dev/null || true
+
+# 6. 剝掉原生模組的符號表。cryptography 的 _rust.abi3.so 一個就 11M,
+#    剝完 9.1M —— 而 debug 符號對使用者沒有任何用處。
+#    最後會重新簽章,所以改動二進位是安全的。
+find "$BACKEND" -name "*.so" -exec strip -S -x {} + 2>/dev/null || true
+
+# 7. .pyc 保留不砍。砍掉的話 Python 會在執行時重新產生,
+#    而那是寫進「已簽章的 app bundle」裡 —— 會讓 codesign --verify 失敗。
+#    寧可多 2MB,也不要一個啟動後就自我破壞簽章的 app。
+find "$BACKEND" -type d -name '__pycache__' -path '*/site-packages/*' \
+     -prune -exec rm -rf {} + 2>/dev/null || true
 
 # ── 驗證 ─────────────────────────────────────────────────
 say "驗證內附的後端可用"
