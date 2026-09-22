@@ -20,8 +20,8 @@ namespace MCPHub.App;
 internal static class Shot
 {
     /// <summary>渲染的尺寸。比 MinWidth 寬一點,才看得出版面在正常寬度下的樣子。</summary>
-    private const int Width = 1000;
-    private const int Height = 680;
+    private const int Width = 1160;
+    private const int Height = 720;
 
     public static async Task<int> RunAsync(string outDir, AppState state)
     {

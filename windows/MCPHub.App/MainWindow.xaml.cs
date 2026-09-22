@@ -142,13 +142,26 @@ public partial class MainWindow : Window
             case Section.Composite: BuildComposite(); break;
             default: BuildSettings(); break;
         }
+
+        // 清單是空的、而右邊正開著編輯器時,左邊那一欄就只是一塊佔著寬度的空白。
+        // 讓編輯器吃掉整個寬度 —— 表單本來就需要位置。
+        if (DetailCol.Width.Value > 0 && Rows.Children.Count == 0)
+        {
+            ListCol.Width = new GridLength(0);
+            SplitCol.Width = new GridLength(0);
+            DetailCol.Width = new GridLength(1, GridUnitType.Star);
+        }
+        else
+        {
+            ListCol.Width = new GridLength(1, GridUnitType.Star);
+        }
     }
 
     /// <summary>
     /// 右邊的編輯區。沒有東西要編時整欄收成 0,清單就佔滿整個寬度 ——
     /// 空的編輯區和空的清單欄是同一件事講兩次。
     /// </summary>
-    private void ShowDetail(bool on, double width = 470)
+    private void ShowDetail(bool on, double width = 430)
     {
         DetailCol.Width = on ? new GridLength(width) : new GridLength(0);
         SplitCol.Width = on ? new GridLength(1) : new GridLength(0);
