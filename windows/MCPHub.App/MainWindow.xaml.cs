@@ -13,11 +13,17 @@ public partial class MainWindow : Window
 
     private readonly AppState _state;
     private Section _section = Section.Servers;
+    /// <summary>
+    /// XAML 建好之前不要重畫。RadioButton 的 IsChecked="True" 會在
+    /// InitializeComponent() 進行中就觸發 Checked,那時具名元素都還是 null。
+    /// </summary>
+    private bool _ready;
 
     public MainWindow(AppState state)
     {
         _state = state;
         InitializeComponent();
+        _ready = true;
         _state.Changed += Refresh;
         Closed += (_, _) => _state.Changed -= Refresh;
         Refresh();
@@ -27,8 +33,7 @@ public partial class MainWindow : Window
 
     private void OnNavChanged(object sender, RoutedEventArgs e)
     {
-        // Checked 在 InitializeComponent 期間就會觸發,那時 _state 還沒接好
-        if (!IsLoaded && _state is null) return;
+        if (!_ready) return;
         _section = ReferenceEquals(sender, NavActions) ? Section.Actions : Section.Servers;
         Refresh();
     }
@@ -44,6 +49,7 @@ public partial class MainWindow : Window
 
     private void Refresh()
     {
+        if (!_ready) return;
         RefreshChrome();
         Rows.Children.Clear();
         PageActions.Children.Clear();
