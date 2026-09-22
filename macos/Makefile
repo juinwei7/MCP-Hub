@@ -7,9 +7,17 @@
 # 打包時跑:make app   → build/MCP Hub.app
 
 APP      := build/MCP Hub.app
-BIN      := .build/release/MCPHub
 REPO     := $(shell cd .. && pwd)
 PYTHON   := $(REPO)/.venv/bin/python
+
+# 交叉打包:ARCH=x86_64 make dist 會在 Apple Silicon 上產出 Intel 版。
+# GitHub 已經不提供 Intel 的 macOS runner(macos-13 退役),這是還能出
+# Intel 版的唯一路徑。
+ARCH     ?= $(shell uname -m)
+# 用 --show-bin-path 問 SPM,不要自己拼 .build/release —— 那是指向原生架構的
+# 符號連結,交叉建置時它不會跟著換,於是會默默打包錯架構的執行檔。
+# 用 = 而不是 := ,這樣只有真的要用時才去問(make clean 不必)。
+BIN       = $(shell swift build -c release --arch $(ARCH) --show-bin-path)/MCPHub
 
 .PHONY: all app dist sign run debug clean test release
 
@@ -19,7 +27,7 @@ all: app
 # make 就認定不用重建 —— 於是 make app 會默默打包出舊的執行檔。
 # SPM 自己會做增量判斷,重跑的成本接近零。
 release:
-	swift build -c release
+	swift build -c release --arch $(ARCH)
 
 app: release
 	rm -rf "$(APP)"
@@ -34,7 +42,7 @@ app: release
 
 # 自足版本:內附 Python runtime 與 gateway 原始碼,不需要專案目錄
 dist: app
-	./scripts/bundle-backend.sh "$(APP)"
+	MCPHUB_ARCH=$(ARCH) ./scripts/bundle-backend.sh "$(APP)"
 	@# 一定要在內附之後重簽。bundle-backend.sh 往 Contents/Resources 塞了上百個
 	@# 檔案,那會破壞 make app 蓋的封印 —— codesign --verify 會說
 	@# 「a sealed resource is missing or invalid」。而通知與開機啟動都要求

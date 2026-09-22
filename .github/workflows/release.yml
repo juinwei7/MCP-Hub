@@ -4,10 +4,17 @@ name: Release
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
-# 產出兩個 DMG(Apple Silicon 與 Intel 各一)。為什麼不做通用二進位:
-# app 內附的是 python-build-standalone 的 runtime,而那是分架構下載的 ——
-# 做成通用檔要嘛塞兩份 runtime(體積翻倍),要嘛自己合併,兩條路都比
-# 「各自的機器上原生建置」複雜。兩個檔案講得也更清楚。
+# 目前只出 Apple Silicon 版。
+#
+# 原本是 arm64 / x86_64 兩個格子,但 GitHub 的免費 Intel macOS runner
+# (macos-13)已經退役 —— 那個 job 排了二十分鐘連 runner 都沒分配到。
+# 接著試過在 arm64 上交叉打包 Intel 版,失敗在驗證那一步:用 Rosetta 跑
+# 內附的 x86_64 Python 時,cryptography 的 rust binding 找不到 OpenSSL
+# 符號(_BIO_ADDR_free)。bundle 本身在真的 Intel 機器上也許是好的,
+# 但這裡驗不了 —— 而驗不了的東西不該發出去。
+#
+# 要出 Intel 版的話有兩條路:付費的 Intel larger runner,或在一台 Intel Mac
+# 上直接跑 make dist(Makefile 的 ARCH 會自己對上)。
 #
 # 簽章:沒有設定憑證 secret 時用 ad-hoc 簽章,發版說明會附上繞過 Gatekeeper
 # 的指令。要正式簽章與公證的話,加上 MACOS_CERTIFICATE 等 secret(見下方)。
@@ -62,20 +69,15 @@ jobs:
         working-directory: macos
         run: ./scripts/acceptance.sh
 
-  # ── 打包:兩個架構各自原生建置 ────────────────────────────
+  # ── 打包 ─────────────────────────────────────────────────
   build:
-    name: 打包 (${{ matrix.arch }})
+    name: 打包 (arm64)
     needs: verify
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false   # 兩個架構的失敗要一次看完,不要修一個再發現另一個
-      matrix:
-        include:
-          - { os: macos-latest, arch: arm64 }    # Apple Silicon
-          - { os: macos-13,     arch: x86_64 }   # Intel
+    runs-on: macos-latest   # Apple Silicon;Intel 的情況見檔案開頭
     env:
       # secrets 不能直接寫在 step 的 if: 裡,要先落到 job 層的 env
       HAS_CERT: ${{ secrets.MACOS_CERTIFICATE != '' }}
+      ARCH: arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -171,7 +173,7 @@ jobs:
         working-directory: macos
         run: |
           set -euo pipefail
-          NAME="MCP-Hub-${{ steps.ver.outputs.version }}-${{ matrix.arch }}"
+          NAME="MCP-Hub-${{ steps.ver.outputs.version }}-${{ env.ARCH }}"
           STAGE="$RUNNER_TEMP/dmg"
           rm -rf "$STAGE" && mkdir -p "$STAGE"
           cp -R "build/MCP Hub.app" "$STAGE/"
@@ -218,7 +220,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dmg-${{ matrix.arch }}
+          name: dmg-${{ env.ARCH }}
           path: macos/*.dmg
           if-no-files-found: error
 
@@ -248,14 +250,13 @@ jobs:
           {
             echo "## 安裝"
             echo
-            echo "| 你的 Mac | 下載 |"
-            echo "|---|---|"
-            echo "| Apple Silicon(M1 以後) | \`MCP-Hub-${TAG#v}-arm64.dmg\` |"
-            echo "| Intel | \`MCP-Hub-${TAG#v}-x86_64.dmg\` |"
+            echo "下載 \`MCP-Hub-${TAG#v}-arm64.dmg\`,打開後把 MCP Hub 拖進 Applications。"
             echo
+            echo "**只支援 Apple Silicon(M1 以後)**,而且需要 macOS 14 以上。"
             echo "不確定的話:左上角  → 關於這台 Mac,看「晶片」那一行。"
             echo
-            echo "打開 DMG,把 MCP Hub 拖進 Applications。"
+            echo "Intel Mac 目前沒有預先打包的版本 —— GitHub 的免費 Intel runner 已經退役。"
+            echo "需要的話可以在 Intel 機器上自己建:\`cd macos && make dist\`。"
             echo
             if [ "$SIGNED" != "true" ]; then
               echo "### 第一次打開會被系統擋下來"
@@ -274,8 +275,6 @@ jobs:
             echo "### 接進 Claude"
             echo
             echo "開啟 app 後,從選單列圖示選「複製接入 Claude 的指令」,貼到終端機執行。"
-            echo
-            echo "需要 macOS 14 以上。"
             echo
           } > notes.md
           cat notes.md

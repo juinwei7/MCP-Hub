@@ -34,7 +34,10 @@ die() { printf "\033[31m✗ %s\033[0m\n" "$*" >&2; exit 1; }
 
 # ── 架構檢查────────────────────────────────────
 # 簽章會綁定架構。裝錯架構的 runtime 會在執行時才炸,而且訊息很難懂。
-ARCH="$(uname -m)"
+#
+# 可以用 MCPHUB_ARCH 指定,讓 arm64 的機器也能包出 x86_64 的版本 ——
+# GitHub 已經不提供 Intel 的 macOS runner,交叉打包是唯一還能出 Intel 版的路。
+ARCH="${MCPHUB_ARCH:-$(uname -m)}"
 case "$ARCH" in
     arm64)  RUNTIME_ARCH="aarch64-apple-darwin" ;;
     x86_64) RUNTIME_ARCH="x86_64-apple-darwin" ;;
