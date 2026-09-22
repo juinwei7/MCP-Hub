@@ -84,8 +84,11 @@ public sealed class TrayIcon : IDisposable
     }
 
     /// <summary>
-    /// 一個圓角方框代表 Hub,右上角一點代表「有事」。
-    /// 系統匣只有 16x16,任何細節都會糊掉,所以形狀必須簡單到剩輪廓。
+    /// 和 app 圖示同一個標記:三條線匯成一條。
+    ///
+    /// 系統匣只有 16x16,所以這裡是簡化版 —— 少一條進來的線、筆畫更粗。
+    /// 和 app 圖示用同一個形狀不是為了整齊,是為了讓人在工作列上一眼認出
+    /// 「這個東西和那個東西是同一個」。
     /// </summary>
     private static Icon Draw(Color tint, bool dot)
     {
@@ -95,18 +98,28 @@ public sealed class TrayIcon : IDisposable
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
 
-            using var pen = new Pen(tint, 3f);
-            g.DrawRoundedBox(pen, 5, 7, 22, 18, 5);
+            var node = new PointF(17f, 16f);
+            using var feed = new Pen(Color.FromArgb(190, tint), 3.2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+            };
+            g.DrawLine(feed, new PointF(4f, 7f), node);
+            g.DrawLine(feed, new PointF(4f, 25f), node);
 
-            // 中間兩條橫線 —— 暗示「多條線匯進來」
-            using var thin = new Pen(tint, 2.5f);
-            g.DrawLine(thin, 10, 14, 22, 14);
-            g.DrawLine(thin, 10, 19, 18, 19);
+            using var trunk = new Pen(tint, 4.2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+            };
+            g.DrawLine(trunk, node, new PointF(28f, 16f));
 
             if (dot)
             {
+                // 有事的時候右上角點一下。位置刻意離開標記本體,
+                // 不要疊在上面把形狀吃掉
                 using var brush = new SolidBrush(tint);
-                g.FillEllipse(brush, 22, 2, 9, 9);
+                g.FillEllipse(brush, 23, 1, 8, 8);
             }
         }
 
@@ -249,21 +262,5 @@ public sealed class TrayIcon : IDisposable
         _icon.Visible = false;
         _icon.Dispose();
         _currentIcon?.Dispose();
-    }
-}
-
-internal static class GraphicsExtensions
-{
-    /// <summary>圓角矩形。GDI+ 沒有內建,每次都要自己拼路徑。</summary>
-    public static void DrawRoundedBox(this Graphics g, Pen pen,
-                                      float x, float y, float w, float h, float r)
-    {
-        using var path = new GraphicsPath();
-        path.AddArc(x, y, r * 2, r * 2, 180, 90);
-        path.AddArc(x + w - r * 2, y, r * 2, r * 2, 270, 90);
-        path.AddArc(x + w - r * 2, y + h - r * 2, r * 2, r * 2, 0, 90);
-        path.AddArc(x, y + h - r * 2, r * 2, r * 2, 90, 90);
-        path.CloseFigure();
-        g.DrawPath(pen, path);
     }
 }

@@ -36,3 +36,8 @@ specs/
 windows/**/bin/
 windows/**/obj/
 windows/shots/
+
+# 圖示的中間產物。真正用到的是 macos/Resources/MCPHub.icns 與
+# windows/MCPHub.App/Assets/MCPHub.ico —— 那兩個有進版控。
+# 要改圖示就重跑 design/MarkRenderer.swift。
+design/out/

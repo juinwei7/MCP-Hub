@@ -10,6 +10,8 @@
     <string>local.mcphub.app</string>
     <key>CFBundleExecutable</key>
     <string>MCPHub</string>
+    <key>CFBundleIconFile</key>
+    <string>MCPHub</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

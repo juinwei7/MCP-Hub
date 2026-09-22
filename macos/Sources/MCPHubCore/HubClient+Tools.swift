@@ -109,7 +109,7 @@ extension HubClient {
 
         var display: String {
             if ok { return (texts ?? []).joined(separator: "\n\n") }
-            return "❌ \(error ?? "未知錯誤")"
+            return "失敗:\(error ?? "未知錯誤")"
         }
     }
 

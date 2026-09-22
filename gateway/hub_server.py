@@ -78,7 +78,7 @@ async def list_tools() -> list[types.Tool]:
             t = by_name.get(ct["name"])
             if t is None:
                 continue
-            hint = " ⚠️需人工確認" if ct["needs_confirm"] else ""
+            hint = "(需人工確認)" if ct["needs_confirm"] else ""
             if ct["needs_confirm"]:
                 any_confirm = True
             desc = ct.get("desc_override") or (t.description or "")  # 有策展描述就用覆寫
@@ -90,7 +90,7 @@ async def list_tools() -> list[types.Tool]:
 
     # B. 自訂工具
     for c in store.enabled_custom_tools():
-        hint = " ⚠️需人工確認" if c["needs_confirm"] else ""
+        hint = "(需人工確認)" if c["needs_confirm"] else ""
         if c["needs_confirm"]:
             any_confirm = True
         out.append(types.Tool(
@@ -101,7 +101,7 @@ async def list_tools() -> list[types.Tool]:
 
     # C. 複合工具
     for c in store.enabled_composite_tools():
-        hint = " ⚠️需人工確認" if c["needs_confirm"] else ""
+        hint = "(需人工確認)" if c["needs_confirm"] else ""
         if c["needs_confirm"]:
             any_confirm = True
         out.append(types.Tool(
@@ -133,12 +133,12 @@ async def _resume(action_id):
     """核准後取結果;APPROVED 才真的執行,EXECUTED 後冪等。"""
     a = store.get_action(action_id)
     if a is None:
-        return text_block(f"❌ 找不到票券 {action_id}")
+        return text_block(f"找不到票券 {action_id}")
     st = a["status"]
     if st == store.WAITING:
-        return text_block(f"⏳ 票券 {action_id} 還在等你在 MCP Hub app 確認。核准後再呼叫我一次。")
+        return text_block(f"票券 {action_id} 還在等你在 MCP Hub app 確認。核准後再呼叫我一次。")
     if st == store.REJECTED:
-        return text_block(f"🚫 你已拒絕票券 {action_id}(操作沒有執行)。")
+        return text_block(f"你已拒絕票券 {action_id}(操作沒有執行)。")
     if st == store.EXECUTED:
         return [types.TextContent(type="text", text=t) for t in a["result"]]
     if st == store.APPROVED:
@@ -146,7 +146,7 @@ async def _resume(action_id):
         store.save_result(action_id, [b.text for b in blocks])
         store.log_call("(approved)", a["tool"], a["arguments"], "executed_after_approval")
         return blocks
-    return text_block(f"❓ 票券 {action_id} 狀態異常:{st}")
+    return text_block(f"票券 {action_id} 狀態異常:{st}")
 
 
 _CONFIRM_SCHEMA = {
@@ -177,7 +177,7 @@ async def _try_elicit_confirm(name, arguments):
 
     try:
         result = await session.elicit(
-            message=f"⚠️ 需人工確認:AI 想執行「{name}」,參數 {json.dumps(arguments, ensure_ascii=False)}。是否允許?",
+            message=f"需人工確認:AI 想執行「{name}」,參數 {json.dumps(arguments, ensure_ascii=False)}。是否允許?",
             requestedSchema=_CONFIRM_SCHEMA,
         )
     except Exception:
@@ -188,7 +188,7 @@ async def _try_elicit_confirm(name, arguments):
         store.log_call("(confirm)", name, arguments, "elicit_approved")
         return await execute_named_tool(name, arguments)
     store.log_call("(confirm)", name, arguments, "elicit_rejected")
-    return text_block("🚫 你拒絕了這個操作(未執行)。")
+    return text_block("你拒絕了這個操作(未執行)。")
 
 
 @server.call_tool()
@@ -214,7 +214,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         action_id = store.create_action(name, arguments)
         store.log_call("(confirm)", name, arguments, "blocked_need_confirm")
         return text_block(
-            f"⚠️ 「{name}」被設為需人工確認,已建立待確認票券。\n"
+            f"「{name}」被設為需人工確認,已建立待確認票券。\n"
             f"請到 MCP Hub app 的「待確認」核准(票券 {action_id})。\n"
             f"核准後,呼叫 check_action(action_id=\"{action_id}\") 取得結果。"
         )

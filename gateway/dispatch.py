@@ -37,7 +37,7 @@ async def _forward(slug, tool, arguments):
         return texts_to_blocks(result_to_texts(result))
     except Exception as e:
         store.log_call(slug, tool, arguments, "error", int((time.perf_counter() - start) * 1000), str(e))
-        return text_block(f"❌ 呼叫下游失敗:{e}")
+        return text_block(f"呼叫下游失敗:{e}")
 
 
 async def dispatch_tool(name, arguments):
@@ -45,7 +45,7 @@ async def dispatch_tool(name, arguments):
     c = store.get_custom_tool(name)
     if c:
         if not c["enabled"]:
-            return text_block(f"❌ 已停用的工具:{name}")
+            return text_block(f"已停用的工具:{name}")
         start = time.perf_counter()
         try:
             text = await custom.execute(c, arguments)
@@ -53,12 +53,12 @@ async def dispatch_tool(name, arguments):
             return text_block(text)
         except Exception as e:
             store.log_call("(custom)", name, arguments, "error", int((time.perf_counter() - start) * 1000), str(e))
-            return text_block(f"❌ 自訂工具執行失敗:{e}")
+            return text_block(f"自訂工具執行失敗:{e}")
 
     slug, _, tool = name.partition(SEP)
     srv = store.get_server(slug)
     if srv is None or not srv["enabled"]:
-        return text_block(f"❌ 未知或已停用的工具:{name}")
+        return text_block(f"未知或已停用的工具:{name}")
     return await _forward(slug, tool, arguments)
 
 
@@ -71,7 +71,7 @@ async def execute_composite_tool(tool_def, arguments):
 
     output = (tool_def.get("output") or "collect").lower()
     if output != "collect":
-        return text_block(f"❌ 不支援的 composite output:{output}")
+        return text_block(f"不支援的 composite output:{output}")
     return text_block(composite.collect_texts(step_results))
 
 
@@ -79,7 +79,7 @@ async def execute_named_tool(name, arguments):
     comp = store.get_composite_tool(name)
     if comp:
         if not comp["enabled"]:
-            return text_block(f"❌ 已停用的工具:{name}")
+            return text_block(f"已停用的工具:{name}")
         start = time.perf_counter()
         try:
             blocks = await execute_composite_tool(comp, arguments)
@@ -87,5 +87,5 @@ async def execute_named_tool(name, arguments):
             return blocks
         except Exception as e:
             store.log_call("(composite)", name, arguments, "error", int((time.perf_counter() - start) * 1000), str(e))
-            return text_block(f"❌ 複合工具執行失敗:{e}")
+            return text_block(f"複合工具執行失敗:{e}")
     return await dispatch_tool(name, arguments)

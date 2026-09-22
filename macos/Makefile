@@ -34,6 +34,9 @@ app: release
 	mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
 	cp "$(BIN)" "$(APP)/Contents/MacOS/MCPHub"
 	cp Resources/Info.plist "$(APP)/Contents/Info.plist"
+	@# 沒有這行,Dock、Finder、Alt-Tab 裡都是那個空白的預設圖示。
+	@# 圖示由 design/MarkRenderer.swift 產生,改了要重跑它。
+	cp Resources/MCPHub.icns "$(APP)/Contents/Resources/MCPHub.icns"
 	@# ad-hoc 簽章:通知與開機啟動都要求 app 有簽章身分。
 	@# 這不需要 Developer 帳號,但也不能散布給別人(見 sign-and-notarize.sh)。
 	codesign --force --deep --sign - "$(APP)"

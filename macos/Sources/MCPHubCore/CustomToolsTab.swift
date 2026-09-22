@@ -420,7 +420,7 @@ private struct ToolEditor: View {
             do {
                 testResult = try await state.client.testCustomTool(d.name, arguments: args).display
             } catch {
-                testResult = "❌ \(error.localizedDescription)"
+                testResult = "失敗:\(error.localizedDescription)"
             }
         }
     }

@@ -16,8 +16,8 @@ BIN="./.build/debug/MCPHub"
 PASS=0; FAIL=0
 
 say()  { printf "\n\033[1m%s\033[0m\n" "$*"; }
-ok()   { printf "  ✅ %s\n" "$*"; PASS=$((PASS+1)); }
-bad()  { printf "  ❌ %s\n" "$*"; FAIL=$((FAIL+1)); }
+ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; PASS=$((PASS+1)); }
+bad()  { printf "  \033[31m✗\033[0m %s\n" "$*"; FAIL=$((FAIL+1)); }
 
 # 後端程序數(只算這次測試起的,靠 PYTHONPATH 指向本專案來辨識)
 backends() { pgrep -f "gateway.web" 2>/dev/null | wc -l | tr -d ' '; }
@@ -61,7 +61,7 @@ trap cleanup EXIT
 say "前置檢查"
 swift build >/dev/null 2>&1 || { echo "建置失敗"; exit 1; }
 if [ "$(backends)" != "0" ]; then
-    echo "  ⚠️  已有 gateway.web 在執行,先收掉以免影響計數"
+    echo "  ! 已有 gateway.web 在執行,先收掉以免影響計數"
     pkill -f "gateway.web"; sleep 1
 fi
 ok "建置成功、環境乾淨"

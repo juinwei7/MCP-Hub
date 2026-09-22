@@ -14,6 +14,9 @@
     <!-- 警告當錯誤:開發機是 macOS,沒有辦法執行,編譯器是最主要的把關 -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 沒有這行,工作列與 Alt-Tab 裡都是預設圖示。
+         圖示由 design/MarkRenderer.swift 產生,改了要重跑它。 -->
+    <ApplicationIcon>Assets\MCPHub.ico</ApplicationIcon>
     <!-- WFAC010 是 WinForms 的分析器,看到 manifest 裡有 DPI 設定就叫我們改用
          ApplicationHighDpiMode。但那個屬性產生的是 WinForms 的啟動程式碼,
          這是 WPF app,根本不會執行到 —— WPF 認的就是 manifest。

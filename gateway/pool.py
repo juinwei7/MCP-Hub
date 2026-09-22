@@ -2,8 +2,8 @@
 下游連線池(C1)—— 常駐 session + 斷線重連。
 
 關鍵教訓:MCP 連線內部用 anyio task group,cancel scope 必須「同一 task、正確 LIFO 順序」進出。
-    ❌ AsyncExitStack 疊多個 session → 會違反順序,關閉時炸 cancel-scope。
-    ✅ 每條連線一個 task,用「自然的 async with 巢狀」持有 session,靠 channel 收發請求。
+    錯:AsyncExitStack 疊多個 session → 會違反順序,關閉時炸 cancel-scope。
+    對:每條連線一個 task,用「自然的 async with 巢狀」持有 session,靠 channel 收發請求。
 
 所以:
     · 每個下游 = 一個常駐 task(_conn_serve),task 內 async with 開著 session,重複使用。

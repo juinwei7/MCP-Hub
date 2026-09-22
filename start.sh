@@ -30,7 +30,7 @@ PROJ="$(pwd)"
 cat <<EOF
 
 ──────────────────────────────────────────────────────────────
-✅ MCP Hub 後端準備就緒
+MCP Hub 後端準備就緒
 
   JSON API：http://localhost:${PORT}/api/v1/health
   (沒有網頁介面。要圖形介面請用原生 app,見 README)

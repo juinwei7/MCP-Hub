@@ -365,7 +365,7 @@ private struct CompositeEditor: View {
             do {
                 testResult = try await state.client.testCompositeTool(name, arguments: args).display
             } catch {
-                testResult = "❌ \(error.localizedDescription)"
+                testResult = "失敗:\(error.localizedDescription)"
             }
         }
     }
