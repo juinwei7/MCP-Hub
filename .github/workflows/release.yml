@@ -393,7 +393,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la dist/
-          gh release create "${{ steps.notes.outputs.tag }}" dist/*.dmg \
+          # 用 dist/* 而不是列副檔名:加了新平台卻忘了改這一行,
+          # 結果是 Release 靜靜地少一個檔案,而所有 job 都是綠的
+          gh release create "${{ steps.notes.outputs.tag }}" dist/* \
             --title "MCP Hub ${{ steps.notes.outputs.tag }}" \
             --notes-file notes.md \
             --generate-notes \
