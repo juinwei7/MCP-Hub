@@ -1,4 +1,7 @@
+using System.IO;
 using System.Windows;
+using System.Windows.Threading;
+using MCPHub.Core;
 
 namespace MCPHub.App;
 
@@ -11,6 +14,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        InstallCrashLog();
 
         ThemeManager.Start();
 
@@ -44,6 +48,46 @@ public partial class App : Application
             _window.WindowState = WindowState.Normal;
         }
         _window.Activate();
+    }
+
+    /// <summary>
+    /// 崩潰時留下記錄。
+    ///
+    /// WinExe 沒有 console,例外沒有地方可去 —— 使用者只會看到 app 無聲無息地
+    /// 消失,而在 CI 上就是「找不到視窗」這種沒有線索的失敗。
+    /// 寫在資料目錄裡,和 actions.db 放一起,回報問題時一併帶走。
+    /// </summary>
+    private static void InstallCrashLog()
+    {
+        DispatcherUnhandledException += (_, e) =>
+        {
+            Write("Dispatcher", e.Exception);
+            // 不設 Handled:狀態已經不明,硬撐下去只會讓後面的錯誤更難解讀
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Write("AppDomain", e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Write("Task", e.Exception);
+            e.SetObserved();
+        };
+
+        static void Write(string source, Exception? ex)
+        {
+            try
+            {
+                var dir = BackendSupervisor.DataDirectory;
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "crash.log"),
+                    $"""
+
+                    ── {DateTime.Now:yyyy-MM-dd HH:mm:ss} [{source}] ──
+                    {ex}
+
+                    """);
+            }
+            catch (Exception) { /* 連記錄都寫不了就只能放棄,不能讓它再丟一次 */ }
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

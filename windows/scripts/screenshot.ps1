@@ -88,11 +88,37 @@ try {
     $hwnd = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $deadline) {
+        if ($proc.HasExited) { break }
         $hwnd = [Win]::FindWindow($null, 'MCP Hub')
         if ($hwnd -ne [IntPtr]::Zero) { break }
         Start-Sleep -Milliseconds 300
     }
-    if ($hwnd -eq [IntPtr]::Zero) { Fail "找不到標題為「MCP Hub」的視窗" }
+
+    if ($hwnd -eq [IntPtr]::Zero) {
+        # 「找不到視窗」本身沒有任何線索。把能拿到的都倒出來,
+        # 不然下一輪 CI 只是重複同一個問號。
+        Write-Host "--- 診斷 ---"
+        if ($proc.HasExited) {
+            Write-Host "app 已結束,exit code $($proc.ExitCode)"
+        } else {
+            Write-Host "app 還在跑(pid $($proc.Id)),但沒有標題為「MCP Hub」的視窗"
+        }
+
+        $log = Join-Path $env:MCPHUB_DATA_DIR 'crash.log'
+        if (Test-Path $log) {
+            Write-Host "--- crash.log ---"
+            Get-Content $log | Select-Object -Last 60 | ForEach-Object { Write-Host $_ }
+        } else {
+            Write-Host "(沒有 crash.log:$log)"
+        }
+
+        Write-Host "--- 目前有標題的最上層視窗 ---"
+        Get-Process | Where-Object { $_.MainWindowTitle } |
+            Select-Object ProcessName, Id, MainWindowTitle |
+            Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host $_ }
+
+        Fail "找不到標題為「MCP Hub」的視窗"
+    }
 
     [void][Win]::SetForegroundWindow($hwnd)
     Start-Sleep -Milliseconds 500
