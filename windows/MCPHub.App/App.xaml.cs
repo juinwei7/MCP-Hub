@@ -57,7 +57,7 @@ public partial class App : Application
     /// 消失,而在 CI 上就是「找不到視窗」這種沒有線索的失敗。
     /// 寫在資料目錄裡,和 actions.db 放一起,回報問題時一併帶走。
     /// </summary>
-    private static void InstallCrashLog()
+    private void InstallCrashLog()
     {
         DispatcherUnhandledException += (_, e) =>
         {
