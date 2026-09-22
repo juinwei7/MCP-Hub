@@ -35,6 +35,14 @@ app: release
 # 自足版本:內附 Python runtime 與 gateway 原始碼,不需要專案目錄
 dist: app
 	./scripts/bundle-backend.sh "$(APP)"
+	@# 一定要在內附之後重簽。bundle-backend.sh 往 Contents/Resources 塞了上百個
+	@# 檔案,那會破壞 make app 蓋的封印 —— codesign --verify 會說
+	@# 「a sealed resource is missing or invalid」。而通知與開機啟動都要求
+	@# 簽章驗得過,所以壞掉的封印不只是驗證時難看,是功能會少。
+	codesign --force --deep --sign - "$(APP)"
+	@codesign --verify --deep --strict "$(APP)" \
+		&& echo "簽章驗證通過" \
+		|| { echo "✗ 簽章驗證失敗"; exit 1; }
 
 # 以 Developer ID 簽章並公證。需要 Apple Developer 帳號,
 # 缺憑證時腳本會說明缺什麼。

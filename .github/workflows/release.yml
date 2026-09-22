@@ -1,0 +1,292 @@
+name: Release
+
+# 推一個 v* 的 tag 就發版。
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# 產出兩個 DMG(Apple Silicon 與 Intel 各一)。為什麼不做通用二進位:
+# app 內附的是 python-build-standalone 的 runtime,而那是分架構下載的 ——
+# 做成通用檔要嘛塞兩份 runtime(體積翻倍),要嘛自己合併,兩條路都比
+# 「各自的機器上原生建置」複雜。兩個檔案講得也更清楚。
+#
+# 簽章:沒有設定憑證 secret 時用 ad-hoc 簽章,發版說明會附上繞過 Gatekeeper
+# 的指令。要正式簽章與公證的話,加上 MACOS_CERTIFICATE 等 secret(見下方)。
+
+on:
+  push:
+    tags: ["v*"]
+  # tag 推錯或要重跑時不必再打一個 tag
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要發版的 tag(例如 v0.2.0)"
+        required: true
+
+permissions:
+  contents: write   # 建立 Release 需要寫入權限
+
+env:
+  PY_VERSION: "3.11"
+
+jobs:
+  # ── 先驗證,再打包 ────────────────────────────────────────
+  # CI 的觸發條件是 push 到分支,推 tag 不會觸發它。沒有這個 job 的話,
+  # 一個沒跑過測試的 commit 也能被 tag 成正式版。
+  verify:
+    name: 發版前驗證
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: 準備環境
+        run: |
+          python -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+
+      - name: 後端測試
+        run: ./.venv/bin/python -m unittest discover -s tests
+
+      - name: Swift 測試
+        working-directory: macos
+        run: swift test
+
+      - name: 生命週期驗收
+        # 孤兒程序是這個專案真實發生過的問題,正式版更不能帶著它出去
+        working-directory: macos
+        run: ./scripts/acceptance.sh
+
+  # ── 打包:兩個架構各自原生建置 ────────────────────────────
+  build:
+    name: 打包 (${{ matrix.arch }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false   # 兩個架構的失敗要一次看完,不要修一個再發現另一個
+      matrix:
+        include:
+          - { os: macos-latest, arch: arm64 }    # Apple Silicon
+          - { os: macos-13,     arch: x86_64 }   # Intel
+    env:
+      # secrets 不能直接寫在 step 的 if: 裡,要先落到 job 層的 env
+      HAS_CERT: ${{ secrets.MACOS_CERTIFICATE != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: 解析版本號
+        id: ver
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          # CFBundleShortVersionString 只吃 1-3 段數字,先擋下來比讓 codesign
+          # 在後面吐難懂的錯好
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::tag「$TAG」的版本號 $VERSION 不是 x / x.y / x.y.z 的形式"
+            exit 1
+          fi
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: 把版本號寫進 Info.plist
+        # 原始碼裡的 0.1.0 是開發用的佔位值。發版的版本號來自 tag,
+        # 不然「關於」顯示的和使用者下載的檔名會對不起來。
+        working-directory: macos
+        run: |
+          /usr/libexec/PlistBuddy -c \
+            "Set :CFBundleShortVersionString ${{ steps.ver.outputs.version }}" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c \
+            "Set :CFBundleVersion ${{ github.run_number }}" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Print" Resources/Info.plist | head -20
+
+      - name: 建置並內附後端
+        working-directory: macos
+        run: make dist
+
+      - name: 以 Developer ID 簽章並公證
+        # 有憑證才跑。沒有的話保留 make dist 的 ad-hoc 簽章,
+        # 發版說明會告訴使用者怎麼繞過 Gatekeeper。
+        if: env.HAS_CERT == 'true'
+        working-directory: macos
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP="build/MCP Hub.app"
+
+          # 臨時鑰匙圈:runner 是一次性的,但別把憑證留在預設鑰匙圈裡
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PWD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PWD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # 由內而外簽:內附的 Python runtime 有上百個 .so / .dylib,
+          # 巢狀內容要先各自簽好,最後才簽 app 本體。
+          # 巢狀的不給 entitlements —— entitlements 只屬於主執行檔。
+          find "$APP/Contents/Resources/backend" -type f \
+            \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -print0 \
+            | xargs -0 -n1 codesign --force --timestamp --options runtime \
+                --sign "$MACOS_SIGN_IDENTITY"
+
+          # 這裡不用 --deep:巢狀內容上面已經簽過,而 --deep 會把 entitlements
+          # 一路套到巢狀執行檔上,那是 Apple 明確不建議的。
+          codesign --force --timestamp --options runtime \
+            --entitlements Resources/MCPHub.entitlements \
+            --sign "$MACOS_SIGN_IDENTITY" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          # 公證要吃壓縮檔;通過後把票據釘回 app,離線也能驗證
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" --wait
+          xcrun stapler staple "$APP"
+
+      - name: 做成 DMG
+        working-directory: macos
+        run: |
+          set -euo pipefail
+          NAME="MCP-Hub-${{ steps.ver.outputs.version }}-${{ matrix.arch }}"
+          STAGE="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          cp -R "build/MCP Hub.app" "$STAGE/"
+          # 拖進去就安裝 —— 沒有這個捷徑,多數人會直接在下載資料夾裡執行
+          ln -s /Applications "$STAGE/Applications"
+          # ULFO(lzfse)比預設的 zlib 小得多,而且 macOS 14 以上都支援
+          hdiutil create -volname "MCP Hub" -srcfolder "$STAGE" \
+            -ov -format ULFO "$NAME.dmg"
+          echo "DMG_NAME=$NAME" >> "$GITHUB_ENV"
+
+      - name: 驗證產出的 DMG
+        # 驗證的是「要送出去的那個檔案」,不是建置目錄裡的 app。
+        # 這一步抓的是掛載、bundle 結構、內附 Python 能不能用。
+        working-directory: macos
+        run: |
+          set -euo pipefail
+          MNT="$RUNNER_TEMP/mnt"
+          mkdir -p "$MNT"
+          hdiutil attach "$DMG_NAME.dmg" -mountpoint "$MNT" -nobrowse -quiet
+          APP="$MNT/MCP Hub.app"
+
+          test -x "$APP/Contents/MacOS/MCPHub"        || { echo "::error::缺少執行檔"; exit 1; }
+          test -x "$APP/Contents/Resources/backend/bin/python3" \
+            || { echo "::error::缺少內附的 Python"; exit 1; }
+
+          ACTUAL=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+                    "$APP/Contents/Info.plist")
+          [ "$ACTUAL" = "${{ steps.ver.outputs.version }}" ] \
+            || { echo "::error::app 內的版本 $ACTUAL 與 tag 不符"; exit 1; }
+
+          # 用 DMG 裡的 Python 匯入,不靠 runner 上的任何東西
+          PYTHONPATH="$APP/Contents/Resources/backend" \
+            "$APP/Contents/Resources/backend/bin/python3" \
+            -c "import gateway.web, gateway.api, gateway.hub_server; print('後端可匯入')"
+
+          codesign --verify --deep --strict "$APP" && echo "簽章有效"
+          # 正式簽章時才問 Gatekeeper —— ad-hoc 一定會被拒,那是預期內的
+          if [ "$HAS_CERT" = "true" ]; then
+            spctl --assess --type execute --verbose "$APP"
+          fi
+
+          hdiutil detach "$MNT" -quiet
+          echo "DMG 驗證通過"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: macos/*.dmg
+          if-no-files-found: error
+
+  # ── 建立 Release ─────────────────────────────────────────
+  publish:
+    name: 建立 Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0   # --generate-notes 要有歷史才比得出變更
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 寫發版說明
+        id: notes
+        env:
+          SIGNED: ${{ secrets.MACOS_CERTIFICATE != '' }}
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "## 安裝"
+            echo
+            echo "| 你的 Mac | 下載 |"
+            echo "|---|---|"
+            echo "| Apple Silicon(M1 以後) | \`MCP-Hub-${TAG#v}-arm64.dmg\` |"
+            echo "| Intel | \`MCP-Hub-${TAG#v}-x86_64.dmg\` |"
+            echo
+            echo "不確定的話:左上角  → 關於這台 Mac,看「晶片」那一行。"
+            echo
+            echo "打開 DMG,把 MCP Hub 拖進 Applications。"
+            echo
+            if [ "$SIGNED" != "true" ]; then
+              echo "### 第一次打開會被系統擋下來"
+              echo
+              echo "這個版本只有 ad-hoc 簽章(沒有 Apple Developer 帳號),"
+              echo "所以 macOS 會說「MCP Hub 已損毀」—— 它沒有損毀,是沒有可驗證的開發者身分。"
+              echo "拖進 Applications 之後,在終端機執行一次:"
+              echo
+              echo '```'
+              echo 'xattr -dr com.apple.quarantine "/Applications/MCP Hub.app"'
+              echo '```'
+              echo
+              echo "之後就能正常打開。"
+              echo
+            fi
+            echo "### 接進 Claude"
+            echo
+            echo "開啟 app 後,從選單列圖示選「複製接入 Claude 的指令」,貼到終端機執行。"
+            echo
+            echo "需要 macOS 14 以上。"
+            echo
+          } > notes.md
+          cat notes.md
+
+      - name: 建立 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist/
+          gh release create "${{ steps.notes.outputs.tag }}" dist/*.dmg \
+            --title "MCP Hub ${{ steps.notes.outputs.tag }}" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag

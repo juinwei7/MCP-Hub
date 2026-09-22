@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Hardened Runtime 的例外。公證要求開啟 Hardened Runtime,而它預設只允許載入
+      由 Apple 或同一個 Team ID 簽章的動態庫。
+
+      我們內附的是 python-build-standalone 的 runtime —— 裡面幾十個 .so 是別人
+      簽的(或根本沒簽)。沒有這一條,app 一啟動後端就會被系統擋下來,
+      而且錯誤訊息只會說「無法載入」,不會說是簽章驗證的問題。
+
+      沒有沙盒 entitlement:這個 app 要讀使用者的 Claude 設定檔、起子程序、
+      綁本機 port,沙盒化需要另一套設計,不是加一個開關的事。
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
