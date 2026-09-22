@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     @Published var customTools: [HubClient.CustomTool] = []
     @Published var compositeTools: [HubClient.CompositeTool] = []
     @Published var categories: HubClient.CategoryOverview?
+    @Published var clients: [HubClient.ClientTarget] = []
     @Published var lastError: String?
     /// Hub 層級的暫停。和「把每台下游停用」不同 —— 它不動下游的啟用狀態。
     @Published var paused = false
@@ -110,6 +111,11 @@ final class AppState: ObservableObject {
             paused = before
             lastError = error.localizedDescription
         }
+    }
+
+    func loadClients() async {
+        do { clients = try await client.clients() }
+        catch { lastError = error.localizedDescription }
     }
 
     func loadCustomTools() async {

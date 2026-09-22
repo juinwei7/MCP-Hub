@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
-from gateway import store, openapi, directory, skills
+from gateway import store, openapi, directory, skills, clients
 from gateway.api import _fail, publish, require_token
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_token)])
@@ -97,6 +97,31 @@ def import_mcp_servers(payload: dict):
     if added:
         publish("server_changed", {"imported": len(added)})
     return {"added": added, "skipped": skipped}
+
+
+# ── 接進 AI client ────────────────────────────────────────
+# 讀 Claude 設定來匯入下游是一回事;把 Hub 自己寫進去是另一回事。
+# 後者以前只能複製指令手動貼,而那正是最容易出錯的一步。
+
+@router.get("/clients")
+def list_clients():
+    return clients.status()
+
+
+@router.post("/clients/{client_id}/install")
+def install_client(client_id: str):
+    try:
+        return clients.install(client_id)
+    except clients.ClientError as e:
+        _fail(400, "client_install_failed", str(e))
+
+
+@router.delete("/clients/{client_id}")
+def uninstall_client(client_id: str):
+    try:
+        return clients.uninstall(client_id)
+    except clients.ClientError as e:
+        _fail(400, "client_uninstall_failed", str(e))
 
 
 def _claude_config_paths():

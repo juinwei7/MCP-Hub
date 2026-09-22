@@ -81,11 +81,57 @@ public partial class MainWindow
 
         Detail.Children.Add(Ui.Divider(this));
 
-        Detail.Children.Add(Ui.Heading(this, "接進 Claude"));
+        Detail.Children.Add(Ui.Heading(this, "接進 AI client"));
         Detail.Children.Add(Ui.Text(this,
-            "把下面的指令貼到終端機執行一次。環境變數不能省 —— 少了它們,"
-            + "聚合器會讀到另一份空的資料庫,你在這裡的設定一個都不會生效。",
+            "直接寫進對方的設定檔,不用自己貼指令 —— 那三個環境變數少一個,"
+            + "聚合器就會去讀另一份空的資料庫,而且不會有任何錯誤訊息。",
             "Body", wrap: true));
+        Detail.Children.Add(new Border { Height = 10 });
+
+        if (_state.Clients.Count == 0)
+        {
+            Detail.Children.Add(Ui.Text(this, "偵測中…", "Meta"));
+            _ = _state.LoadClientsAsync();
+        }
+        foreach (var t in _state.Clients)
+        {
+            var id = t.Id;
+            var trailing = new StackPanel { Orientation = Orientation.Horizontal };
+            if (t.Stale)
+            {
+                // 已安裝但參數對不上比「沒安裝」更危險 —— 使用者以為它在動
+                trailing.Children.Add(Ui.Pill(this, "需更新", "warn"));
+            }
+            if (t.Installed)
+            {
+                trailing.Children.Add(Ui.Button(this, t.Stale ? "更新" : "重新寫入", "Quiet",
+                    () => _ = InstallClient(id)));
+                var rm = Ui.Button(this, "移除", "Quiet", () => _ = UninstallClient(id));
+                rm.Foreground = Ui.Brush(this, "Down");
+                trailing.Children.Add(rm);
+            }
+            else
+            {
+                trailing.Children.Add(Ui.Button(this, "接上", "Primary",
+                    () => _ = InstallClient(id)));
+            }
+
+            Detail.Children.Add(new HubRow
+            {
+                Health = !t.Installed ? Controls.Health.Off
+                       : t.Stale ? Controls.Health.Warn
+                       : Controls.Health.Ok,
+                Title = t.Label,
+                // 沒偵測到就說沒偵測到,不要假裝那是個可以接的目標
+                Detail = t.Detected ? t.Path : "這台機器上沒偵測到",
+                DetailIsMachine = t.Detected,
+                Dimmed = !t.Detected,
+                Trailing = trailing,
+            });
+        }
+
+        Detail.Children.Add(Ui.Divider(this));
+        Detail.Children.Add(Ui.Heading(this, "或手動貼指令"));
 
         var resolved = BackendSupervisor.ResolvePython();
         var command = BackendSupervisor.ClaudeAddCommand(
@@ -94,7 +140,6 @@ public partial class MainWindow
             resolved?.Repo ?? "<專案路徑>");
         var box = Ui.Code(this, command, 110);
         box.IsReadOnly = true;
-        Detail.Children.Add(new Border { Height = 10 });
         Detail.Children.Add(box);
         Detail.Children.Add(Right(Ui.Button(this, "複製", "Quiet", () =>
         {
@@ -126,6 +171,30 @@ public partial class MainWindow
                 Fail($"打不開資料夾:{e.Message}");
             }
         })));
+    }
+
+    private async Task InstallClient(string id)
+    {
+        try
+        {
+            using var c = _state.NewClient();
+            var r = await c.InstallClientAsync(id).ConfigureAwait(true);
+            Fail($"已寫入 {r.Path}。{r.Note}");
+            await _state.LoadClientsAsync().ConfigureAwait(true);
+        }
+        catch (HubClient.HubException e) { Fail(e.Message); }
+    }
+
+    private async Task UninstallClient(string id)
+    {
+        try
+        {
+            using var c = _state.NewClient();
+            var r = await c.UninstallClientAsync(id).ConfigureAwait(true);
+            Fail($"已從 {r.Path} 移除。{r.Note}");
+            await _state.LoadClientsAsync().ConfigureAwait(true);
+        }
+        catch (HubClient.HubException e) { Fail(e.Message); }
     }
 
     // ── 匯入下游 ──────────────────────────────────────────

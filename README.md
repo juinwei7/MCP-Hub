@@ -52,13 +52,25 @@ Hub 的雙角色:**對 Claude 是 MCP Server;對下游是 MCP Client**(連上就
 
 Intel Mac 沒有預先打包的版本(GitHub 的免費 Intel runner 已退役),要的話在 Intel 機器上自己建:`cd macos && make dist`。
 
-### 接進 Claude
+### 接進 AI client
 
-開啟 app,從系統匣 / 選單列圖示選 **「複製接入 Claude 的指令」**,貼到終端機執行一次。
+開啟 app → **設定 → 一般 → 接進 AI client**,按「接上」。app 會直接寫進對方的
+設定檔,不用自己貼指令。
 
-> **不要自己手打那段指令。**它帶著 `MCP_HUB_DB` 與 `MCP_HUB_KEY` 兩個環境變數 ——
-> 少了它們,聚合器會去讀另一份空的資料庫,你在 app 裡的設定一個都不會生效,
-> 而且**不會有任何錯誤訊息**,只是「工具怎麼都沒出現」。
+| 目標 | 設定檔 |
+|---|---|
+| Claude Desktop | `claude_desktop_config.json` |
+| Claude Code | `~/.claude.json` |
+| Codex CLI | `~/.codex/config.toml` |
+
+寫入前會先備份,而且**只動 `my-hub` 那一段** —— 你原本的設定、註解、其他 MCP
+server 都原樣保留。Codex 的 TOML 是用文字層級增修的,不是整份讀成 dict 再寫回去
+(那會把註解全弄丟)。
+
+也可以手動貼指令,同一頁下方有。但**別自己打** —— 那串帶著 `PYTHONPATH`、
+`MCP_HUB_DB`、`MCP_HUB_KEY` 三個環境變數,少任何一個,聚合器就會去讀另一份空的
+資料庫,你在 app 裡的設定一個都不會生效,而且**不會有任何錯誤訊息**,
+只是「工具怎麼都沒出現」。
 
 ---
 
@@ -85,6 +97,7 @@ Intel Mac 沒有預先打包的版本(GitHub 的免費 Intel runner 已退役),�
 | 匯入下游、分類、匯出 | ● | ● |
 | 總開關(選單列 + 視窗) | ● | ● |
 | OAuth 授權 | ● | ● |
+| 一鍵接進 Claude / Codex | ● | ● |
 | 全域快捷鍵(⌃⌥⌘P 切換暫停) | ● | ○ |
 | OpenAPI 匯入、服務目錄 | ● | ○ |
 | Skill 調適與匯出 | ● | ○ |
@@ -145,6 +158,7 @@ gateway/            後端(Python)—— 兩個 app 共用
 ├── composite.py    複合工具:多步驟串接
 ├── openapi.py      OpenAPI 規格匯入
 ├── auth.py         OAuth 2.1 + PKCE 授權
+├── clients.py      把 Hub 寫進 Claude / Codex 的設定檔
 └── api*.py         JSON API(下游 / 工具 / 匯入匯出)
 macos/              SwiftUI app + 打包腳本(make dist / make sign)
 windows/            WPF app(MCPHub.App)+ 可測試的 Core(MCPHub.Core)
@@ -170,7 +184,7 @@ macOS `~/Library/Application Support/MCP Hub/`、Windows `%LOCALAPPDATA%\MCP Hub
 ## 開發
 
 ```bash
-./.venv/bin/python -m unittest discover -s tests    # Python:153
+./.venv/bin/python -m unittest discover -s tests    # Python:168
 cd macos   && make test                             # Swift 16 + 生命週期驗收 10
 cd windows && dotnet test MCPHub.Core.Tests/...     # .NET:24(需 Windows)
 ```

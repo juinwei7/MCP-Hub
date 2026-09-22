@@ -205,6 +205,35 @@ extension HubClient {
         try await request("POST", "/servers/\(escaped(slug))/refresh")
     }
 
+    struct ClientTarget: Decodable, Identifiable, Sendable {
+        let id: String
+        let label: String
+        let path: String
+        let detected: Bool
+        let installed: Bool
+        let stale: Bool
+        let note: String
+    }
+
+    struct ClientResult: Decodable, Sendable {
+        let path: String
+        let note: String
+    }
+
+    func clients() async throws -> [ClientTarget] {
+        try await request("GET", "/clients", body: nil)
+    }
+
+    @discardableResult
+    func installClient(_ id: String) async throws -> ClientResult {
+        try await request("POST", "/clients/\(escaped(id))/install", body: [:])
+    }
+
+    @discardableResult
+    func uninstallClient(_ id: String) async throws -> ClientResult {
+        try await request("DELETE", "/clients/\(escaped(id))", body: nil)
+    }
+
     struct OAuthStart: Decodable, Sendable {
         let authorizationURL: String
         enum CodingKeys: String, CodingKey { case authorizationURL = "authorization_url" }

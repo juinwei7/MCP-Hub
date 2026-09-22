@@ -190,6 +190,30 @@ public sealed partial class HubClient
     public Task DeleteCategoryAsync(string name, CancellationToken ct = default) =>
         SendVoidAsync(HttpMethod.Delete, $"categories/{name}", null, ct);
 
+    // ── 接進 AI client ────────────────────────────────────
+
+    public sealed record ClientTarget(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("label")] string Label,
+        [property: JsonPropertyName("path")] string Path,
+        [property: JsonPropertyName("detected")] bool Detected,
+        [property: JsonPropertyName("installed")] bool Installed,
+        [property: JsonPropertyName("stale")] bool Stale,
+        [property: JsonPropertyName("note")] string Note);
+
+    public sealed record ClientResult(
+        [property: JsonPropertyName("path")] string Path,
+        [property: JsonPropertyName("note")] string Note);
+
+    public Task<IReadOnlyList<ClientTarget>> ClientsAsync(CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<ClientTarget>>("clients", ct);
+
+    public Task<ClientResult> InstallClientAsync(string id, CancellationToken ct = default) =>
+        SendAsync<ClientResult>(HttpMethod.Post, $"clients/{id}/install", new { }, ct);
+
+    public Task<ClientResult> UninstallClientAsync(string id, CancellationToken ct = default) =>
+        SendAsync<ClientResult>(HttpMethod.Delete, $"clients/{id}", null, ct);
+
     // ── 匯入 / 匯出 ───────────────────────────────────────
 
     public Task<ClaudePreview> PeekClaudeConfigAsync(CancellationToken ct = default) =>

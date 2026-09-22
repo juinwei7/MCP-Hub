@@ -77,6 +77,10 @@ private struct GeneralView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Style.Space.block) {
+                clientsSection
+
+                Divider()
+
                 VStack(alignment: .leading, spacing: Style.Space.row) {
                     Text("全域快捷鍵").font(.headline)
                     HStack(spacing: Style.Space.row) {
@@ -122,6 +126,69 @@ private struct GeneralView: View {
             .padding(Style.Space.section)
         }
         .onAppear { loginItemOn = LoginItem.isEnabled }
+        .task { await state.loadClients() }
+    }
+
+    /// 接進 AI client。
+    ///
+    /// 以前只能「複製指令、貼到終端機」。那一步最容易出錯的是三個環境變數 ——
+    /// 少一個,聚合器就去讀另一份空的資料庫,而且不會有任何錯誤訊息。
+    /// 那三個值後端自己最清楚,根本不該讓使用者轉手。
+    private var clientsSection: some View {
+        VStack(alignment: .leading, spacing: Style.Space.row) {
+            Text("接進 AI client").font(.headline)
+            Text("直接寫進對方的設定檔。寫之前會先備份,而且只動 my-hub 那一段。")
+                .font(.caption).foregroundStyle(.secondary)
+
+            ForEach(state.clients) { target in
+                HubRow(health: !target.installed ? .off : (target.stale ? .warn : .ok),
+                       title: target.label,
+                       // 沒偵測到就說沒偵測到,不要假裝那是個可以接的目標
+                       detail: target.detected ? target.path : "這台機器上沒偵測到",
+                       detailIsMachine: target.detected,
+                       dimmed: !target.detected) {
+                    if target.stale {
+                        // 已安裝但參數對不上比「沒安裝」更危險 —— 使用者以為它在動
+                        Pill(text: "需更新", tone: .warn)
+                    }
+                    if target.installed {
+                        Button(target.stale ? "更新" : "重新寫入") { install(target.id) }
+                        Button("移除", role: .destructive) { uninstall(target.id) }
+                    } else {
+                        Button("接上") { install(target.id) }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+
+            if state.clients.isEmpty {
+                Text("偵測中…").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func install(_ id: String) {
+        Task {
+            do {
+                let r = try await state.client.installClient(id)
+                state.lastError = "已寫入 \(r.path)。\(r.note)"
+            } catch {
+                state.lastError = error.localizedDescription
+            }
+            await state.loadClients()
+        }
+    }
+
+    private func uninstall(_ id: String) {
+        Task {
+            do {
+                let r = try await state.client.uninstallClient(id)
+                state.lastError = "已從 \(r.path) 移除。\(r.note)"
+            } catch {
+                state.lastError = error.localizedDescription
+            }
+            await state.loadClients()
+        }
     }
 }
 

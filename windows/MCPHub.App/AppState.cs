@@ -29,6 +29,7 @@ public sealed class AppState : IDisposable
     public IReadOnlyList<HubClient.StepTool> StepTools { get; private set; } = [];
     public HubClient.CategoryOverview? Categories { get; private set; }
     public HubClient.ClaudePreview? ClaudePreview { get; private set; }
+    public IReadOnlyList<HubClient.ClientTarget> Clients { get; private set; } = [];
     public HubClient.LogPage? Logs { get; private set; }
     public bool LogsErrorsOnly { get; private set; }
 
@@ -220,6 +221,18 @@ public sealed class AppState : IDisposable
         {
             using var c = NewClient();
             ClaudePreview = await c.PeekClaudeConfigAsync(_cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (HubClient.HubException e) { LastError = e.Message; }
+        Raise();
+    }
+
+    public async Task LoadClientsAsync()
+    {
+        try
+        {
+            using var c = NewClient();
+            Clients = await c.ClientsAsync(_cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { return; }
         catch (HubClient.HubException e) { LastError = e.Message; }
