@@ -161,35 +161,37 @@ jobs:
         working-directory: windows
         run: dotnet build MCPHub.App/MCPHub.App.csproj -c Release
 
-      - name: 起 app 並截圖(淺色)
+      - name: 渲染畫面
         working-directory: windows
         env:
           MCPHUB_PYTHON: ${{ github.workspace }}\.venv\Scripts\python.exe
           MCPHUB_REPO: ${{ github.workspace }}
-          MCPHUB_DATA_DIR: ${{ runner.temp }}\mcphub-light
+          MCPHUB_DATA_DIR: ${{ runner.temp }}\mcphub
+        shell: pwsh
         run: |
-          pwsh -File scripts/screenshot.ps1 `
-            -Exe MCPHub.App\bin\Release\net8.0-windows\MCPHub.exe `
-            -Out shots\light.png
-
-      - name: 切成深色再截一次
-        working-directory: windows
-        env:
-          MCPHUB_PYTHON: ${{ github.workspace }}\.venv\Scripts\python.exe
-          MCPHUB_REPO: ${{ github.workspace }}
-          MCPHUB_DATA_DIR: ${{ runner.temp }}\mcphub-dark
-        run: |
-          # 深色不是把淺色反轉,是另一組色值 —— 兩組都要真的看過
-          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' `
-            -Name AppsUseLightTheme -Value 0
-          pwsh -File scripts/screenshot.ps1 `
-            -Exe MCPHub.App\bin\Release\net8.0-windows\MCPHub.exe `
-            -Out shots\dark.png
+          # --shot 把淺色與深色各渲染一張然後自己結束。不截螢幕 ——
+          # runner 上沒有可靠的互動式 desktop,實測連一個有標題的最上層視窗
+          # 都列不出來。用 WPF 自己的 Measure/Arrange + RenderTargetBitmap
+          # 就不需要桌面,尺寸也由我們決定。詳見 Shot.cs。
+          $exe = 'MCPHub.App\bin\Release\net8.0-windows\MCPHub.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--shot','shots' -PassThru -Wait
+          if ($p.ExitCode -ne 0) {
+            Write-Host "::error::渲染失敗,exit code $($p.ExitCode)"
+            $log = Join-Path $env:MCPHUB_DATA_DIR 'crash.log'
+            if (Test-Path $log) { Get-Content $log | Select-Object -Last 60 }
+            exit 1
+          }
+          Get-Content shots\shot.log
+          foreach ($n in 'light','dark') {
+            $f = "shots\$n.png"
+            if (-not (Test-Path $f)) { Write-Host "::error::沒有產出 $f"; exit 1 }
+            Write-Host "$f  $((Get-Item $f).Length) bytes"
+          }
 
       - name: 殘留程序檢查
         if: always()
-        # 孤兒程序是這個專案真實發生過的問題。app 被 Stop-Process 殺掉時
-        # 走不到 OnExit,這裡驗的是 Job Object 那道保險有沒有生效。
+        # 孤兒程序是這個專案真實發生過的問題。--shot 走的是正常的 Shutdown,
+        # 所以這裡驗的是 OnExit 有沒有真的把後端收掉。
         shell: pwsh
         run: |
           $leftover = Get-CimInstance Win32_Process |

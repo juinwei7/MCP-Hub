@@ -11,6 +11,9 @@ public partial class App : Application
     private TrayIcon? _tray;
     private MainWindow? _window;
 
+    /// <summary>渲染截圖時要拿到同一份狀態。正常執行路徑不會用到。</summary>
+    internal static AppState? SharedState { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -19,12 +22,34 @@ public partial class App : Application
         ThemeManager.Start();
 
         _state = new AppState();
-        _tray = new TrayIcon(_state, ShowWindow);
+        SharedState = _state;
         _state.Boot();
+
+        // --shot <目錄>:把畫面渲染成 PNG 然後結束。這是 CI 唯一能看到畫面的
+        // 方式 —— 詳見 Shot.cs。系統匣在這條路徑上不需要。
+        var shotDir = ShotDirectory(e.Args);
+        if (shotDir is not null)
+        {
+            _ = Shot.RunAsync(shotDir, _state).ContinueWith(
+                t => Dispatcher.Invoke(() => Shutdown(t.IsFaulted ? 1 : 0)),
+                TaskScheduler.Default);
+            return;
+        }
+
+        _tray = new TrayIcon(_state, ShowWindow);
 
         // 第一次啟動先把視窗打開,不然只有系統匣圖示會讓人以為沒反應。
         // 之後關掉視窗只是隱藏,程序還在跑。
         ShowWindow();
+    }
+
+    private static string? ShotDirectory(string[] args)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == "--shot") return args[i + 1];
+        }
+        return null;
     }
 
     /// <summary>

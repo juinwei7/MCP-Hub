@@ -36,6 +36,12 @@ public static class ThemeManager
 
     public static void Stop() => SystemEvents.UserPreferenceChanged -= null;
 
+    /// <summary>
+    /// 忽略系統設定,直接套指定的主題。只給截圖用 —— 深色不是把淺色反轉,
+    /// 是另一組色值,所以兩組都得真的渲染過才算看過。
+    /// </summary>
+    internal static void Force(bool dark) => Apply(dark);
+
     private static bool ReadIsDark()
     {
         try
