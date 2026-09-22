@@ -13,14 +13,19 @@ import Foundation
 // 幾何全部以 1024 為基準等比縮放,所以任何尺寸都是同一張圖,不是縮小後糊掉的點陣。
 
 enum Mark {
-    // 冷調石墨,和 app 的 ground 同一族
-    static let bgTop = CGColor(srgbRed: 0.098, green: 0.129, blue: 0.145, alpha: 1)   // #192124
-    static let bgBottom = CGColor(srgbRed: 0.043, green: 0.063, blue: 0.075, alpha: 1) // #0B1013
+    // 底用品牌的青,不是深色石墨。
+    //
+    // 第一版的底是 app 的 ground(近黑)。在淺色桌布上沒問題,但在深色桌布的
+    // Dock 裡它就是一團黑 —— 和旁邊一排深色 app 分不出來。圖示要能當成
+    // 「一塊顏色」被認出來,那是在三十個圖示裡找到它的唯一方式。
+    static let bgTop = CGColor(srgbRed: 0.106, green: 0.510, blue: 0.565, alpha: 1)   // #1B8290
+    static let bgBottom = CGColor(srgbRed: 0.031, green: 0.259, blue: 0.302, alpha: 1) // #08424D
 
-    // 強調色。和 app 的 accent 同一個 —— 圖示和介面該是同一個東西
-    static let rail = CGColor(srgbRed: 0.278, green: 0.714, blue: 0.769, alpha: 1)    // #47B6C4
-    // 進來的線比出去的暗:視覺上先讀到「匯流的終點」
-    static let feed = CGColor(srgbRed: 0.416, green: 0.549, blue: 0.588, alpha: 1)    // #6A8C96
+    // 標記反白。在青底上白色的對比遠高於任何有彩度的顏色,
+    // 小尺寸下撐得住的就是對比
+    static let rail = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+    // 進來的線壓低不透明度而不是換顏色:換顏色會在小尺寸下變成第三種色塊
+    static let feed = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.62)
 
     static func draw(in ctx: CGContext, size: CGFloat, squircle: Bool) {
         let k = size / 1024.0
@@ -59,26 +64,26 @@ enum Mark {
         //
         // 改成真的匯流:三條線從左邊不同高度進來,收束到一個節點,
         // 再以一條出去。形狀本身就是這個產品在做的事。
-        let stroke = s(74)
+        let stroke = s(92)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
 
-        let node = CGPoint(x: s(596), y: s(512))
+        let node = CGPoint(x: s(586), y: s(512))
 
         // 進來的三條比出去的暗 —— 讓視線先落在匯流的結果上
         ctx.setStrokeColor(feed)
         ctx.setLineWidth(stroke)
-        for y in [s(286), s(512), s(738)] {
-            ctx.move(to: CGPoint(x: s(222), y: y))
+        for y in [s(268), s(512), s(756)] {
+            ctx.move(to: CGPoint(x: s(232), y: y))
             ctx.addLine(to: node)
         }
         ctx.strokePath()
 
         // 出去的那一條:粗一點、亮一點,而且用 app 的強調色
         ctx.setStrokeColor(rail)
-        ctx.setLineWidth(s(94))
+        ctx.setLineWidth(s(116))
         ctx.move(to: node)
-        ctx.addLine(to: CGPoint(x: s(812), y: s(512)))
+        ctx.addLine(to: CGPoint(x: s(802), y: s(512)))
         ctx.strokePath()
     }
 
