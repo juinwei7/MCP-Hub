@@ -22,21 +22,23 @@ final class MenuBarController {
         // 狀態一變就重畫,不輪詢 UI
         state.$servers.sink { [weak self] _ in self?.rebuildMenu() }.store(in: &cancellables)
         state.$backend.sink { [weak self] _ in self?.rebuildMenu() }.store(in: &cancellables)
+        state.$paused.sink { [weak self] _ in self?.rebuildMenu() }.store(in: &cancellables)
     }
 
     private func rebuildMenu() {
         item.button?.title = summaryTitle()
-        // 通知送不出去時,選單列就是唯一的提示管道,有待辦就換成實心圖示
-        let needsAttention = state.pendingCount > 0 && !state.notifier.canNotify
-        item.button?.image = NSImage(
-            systemSymbolName: needsAttention ? "exclamationmark.triangle.fill"
-                                             : "puzzlepiece.extension",
-            accessibilityDescription: "MCP Hub")
+        item.button?.image = NSImage(systemSymbolName: iconName(),
+                                     accessibilityDescription: "MCP Hub")
 
         let menu = NSMenu()
         menu.addItem(header(backendLine()))
 
         if case .ready = state.backend {
+            // 總開關擺在最上面,和下游清單之間隔一條線 —— 它管的是整個 Hub,
+            // 不是其中某一台。
+            menu.addItem(.separator())
+            menu.addItem(action(state.paused ? "繼續" : "暫停", #selector(togglePaused)))
+
             menu.addItem(.separator())
             if state.servers.isEmpty {
                 menu.addItem(header("尚未加入任何下游"))
@@ -55,7 +57,6 @@ final class MenuBarController {
             menu.addItem(.separator())
             menu.addItem(action("開啟主視窗", #selector(openWindow)))
             menu.addItem(action("全部重新檢查", #selector(checkAll)))
-            menu.addItem(action("開啟管理台", #selector(openAdmin)))
             menu.addItem(action("複製接入 Claude 的指令", #selector(copyClaudeCommand)))
         } else if case .failed(let reason) = state.backend {
             menu.addItem(.separator())
@@ -76,10 +77,25 @@ final class MenuBarController {
         item.menu = menu
     }
 
+    /// 圖示只表達一件事:現在該不該理它。
+    ///
+    /// 暫停排在待辦之前 —— 暫停時工具根本出不去,那幾筆待確認也動不了,
+    /// 先讓人看到「是我自己關掉的」比較有用。
+    private func iconName() -> String {
+        if case .failed = state.backend { return "exclamationmark.triangle.fill" }
+        if state.paused { return "pause.circle" }
+        // 通知送不出去時,選單列就是唯一的提示管道,有待辦就換成實心圖示
+        if state.pendingCount > 0 && !state.notifier.canNotify {
+            return "exclamationmark.triangle.fill"
+        }
+        return "puzzlepiece.extension"
+    }
+
     /// 選單列只顯示「需要注意的事」:一切正常時不放數字,有異常才跳出來。
     private func summaryTitle() -> String {
         switch state.backend {
         case .ready:
+            if state.paused { return "" }   // 圖示已經說了,不必再掛數字
             // 待確認優先於異常 —— 那是需要你動手的,異常只是需要你知道
             if state.pendingCount > 0 { return " \(state.pendingCount)" }
             return state.errored > 0 ? " \(state.errored)" : ""
@@ -97,6 +113,7 @@ final class MenuBarController {
         case .stopped: return "後端未啟動"
         case .starting: return "後端啟動中…"
         case .ready:
+            if state.paused { return "已暫停 · Claude 目前看不到任何工具" }
             let total = state.servers.filter { $0.enabled }.count
             return "後端正常 · \(state.healthy)/\(total) 台下游健康"
         case .failed: return "後端啟動失敗"
@@ -139,6 +156,10 @@ final class MenuBarController {
         }
     }
 
+    @objc private func togglePaused() {
+        Task { await state.setPaused(!state.paused) }
+    }
+
     @objc private func toggleLoginItem() {
         if let problem = LoginItem.set(!LoginItem.isEnabled) {
             state.lastError = problem
@@ -169,10 +190,6 @@ final class MenuBarController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
         state.lastError = "已複製接入指令到剪貼簿,貼到終端機執行即可。"
-    }
-
-    @objc private func openAdmin() {
-        NSWorkspace.shared.open(URL(string: "http://localhost:\(BackendSupervisor.port)/")!)
     }
 
     @objc private func retry() {

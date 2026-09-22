@@ -17,7 +17,7 @@ import asyncio
 import hmac
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from gateway import store, hub, auth
 from gateway.config import API_TOKEN, DB_PATH
@@ -201,6 +201,21 @@ def health():
         "db_path": str(DB_PATH),
         "api_enabled": bool(API_TOKEN),
     }
+
+
+# ── 總開關 ────────────────────────────────────────────────
+# 暫停是 Hub 層級的,不動每台下游的啟用狀態 —— 恢復時才知道本來哪幾台是開的。
+@guarded.get("/paused")
+def get_paused():
+    return {"paused": store.is_paused()}
+
+
+@guarded.put("/paused")
+def put_paused(body: dict = Body(...)):
+    paused = bool(body.get("paused"))
+    store.set_paused(paused)
+    publish("paused_changed", {"paused": paused})
+    return {"paused": paused}
 
 
 # ── 下游 ──────────────────────────────────────────────────

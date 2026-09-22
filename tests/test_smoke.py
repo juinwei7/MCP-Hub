@@ -270,6 +270,34 @@ class TestSkillWorkbench(unittest.IsolatedAsyncioTestCase):
         store.delete_composite_tool("tune_report")
 
 
+class TestPauseGatesTheAggregator(unittest.IsolatedAsyncioTestCase):
+    """暫停要在聚合器這端真的擋住,不能只是 app 的視覺狀態。"""
+
+    def setUp(self):
+        self.addCleanup(store.set_paused, False)
+
+    async def test_paused_exposes_no_tools(self):
+        from gateway import hub_server
+        store.upsert_composite_tool(
+            "pause_probe", "測試用", "[]",
+            '[{"id":"s","tool":"demo__read","args":{}}]', "collect", "")
+        self.addCleanup(store.delete_composite_tool, "pause_probe")
+
+        store.set_paused(False)
+        names = [t.name for t in await hub_server.list_tools()]
+        self.assertIn("pause_probe", names)
+
+        store.set_paused(True)
+        self.assertEqual(await hub_server.list_tools(), [])
+
+    async def test_paused_blocks_calls_from_stale_tool_lists(self):
+        # client 手上可能還有暫停前拿到的清單,呼叫這端也得擋
+        from gateway import hub_server
+        store.set_paused(True)
+        blocks = await hub_server.call_tool("anything__at_all", {})
+        self.assertIn("暫停", blocks[0].text)
+
+
 class TestWebPages(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

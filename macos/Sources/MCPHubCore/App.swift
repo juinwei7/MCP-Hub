@@ -15,6 +15,8 @@ final class AppState: ObservableObject {
     @Published var compositeTools: [HubClient.CompositeTool] = []
     @Published var categories: HubClient.CategoryOverview?
     @Published var lastError: String?
+    /// Hub 層級的暫停。和「把每台下游停用」不同 —— 它不動下游的啟用狀態。
+    @Published var paused = false
 
     let supervisor = BackendSupervisor()
     let notifier = Notifier()
@@ -56,17 +58,31 @@ final class AppState: ObservableObject {
         do {
             // 工具數也一起抓:側邊欄一直顯示著這兩個計數,只在點進分頁時才載入的話,
             // 在那之前它們會是 0 —— 錯的數字比沒有數字更糟。
-            let (srv, act, custom, comp) = try await (
+            let (srv, act, custom, comp, isPaused) = try await (
                 client.servers(), client.actions(),
-                client.customTools(), client.compositeTools())
+                client.customTools(), client.compositeTools(), client.paused())
             servers = srv
             actions = act
             customTools = custom
             compositeTools = comp
+            paused = isPaused
             lastError = nil
 
             notifier.sync(actions: act, servers: srv)
         } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// 先改本地狀態再送出:選單列按下去要立刻反映,不能等一輪 round trip。
+    /// 失敗就回捲,並把原因留在 lastError。
+    func setPaused(_ want: Bool) async {
+        let before = paused
+        paused = want
+        do {
+            paused = try await client.setPaused(want)
+        } catch {
+            paused = before
             lastError = error.localizedDescription
         }
     }

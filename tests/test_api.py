@@ -197,6 +197,33 @@ class TestServers(ApiTest):
         self.assertEqual(r.status_code, 400)
 
 
+# ── B2. 總開關 ────────────────────────────────────────────
+class TestPaused(ApiTest):
+    def setUp(self):
+        self.addCleanup(store.set_paused, False)
+
+    def test_defaults_to_running(self):
+        store.set_paused(False)
+        self.assertFalse(self.c.get("/api/v1/paused", headers=AUTH).json()["paused"])
+
+    def test_round_trips(self):
+        self.assertTrue(
+            self.c.put("/api/v1/paused", headers=AUTH, json={"paused": True}).json()["paused"])
+        self.assertTrue(self.c.get("/api/v1/paused", headers=AUTH).json()["paused"])
+        self.assertFalse(
+            self.c.put("/api/v1/paused", headers=AUTH, json={"paused": False}).json()["paused"])
+
+    def test_does_not_touch_server_enabled_state(self):
+        # 暫停不是「把每台下游停用」—— 恢復時要知道本來哪幾台是開的
+        self.mkserver("keepstate")
+        store.set_server_enabled("keepstate", True)
+        self.c.put("/api/v1/paused", headers=AUTH, json={"paused": True})
+        self.assertTrue(store.get_server("keepstate")["enabled"])
+
+    def test_requires_token(self):
+        self.assertEqual(self.c.get("/api/v1/paused").status_code, 401)
+
+
 # ── C. 工具開關 ───────────────────────────────────────────
 class TestTools(ApiTest):
     def setUp(self):

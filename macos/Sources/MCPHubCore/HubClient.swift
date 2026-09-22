@@ -141,6 +141,21 @@ struct HubClient {
         }
     }
 
+    // MARK: - 總開關
+
+    struct PausedState: Decodable { let paused: Bool }
+
+    func paused() async throws -> Bool {
+        let s: PausedState = try await get("/paused")
+        return s.paused
+    }
+
+    @discardableResult
+    func setPaused(_ paused: Bool) async throws -> Bool {
+        let s: PausedState = try await send("PUT", "/paused", body: ["paused": paused])
+        return s.paused
+    }
+
     // MARK: - 下游
 
     func servers() async throws -> [Server] {

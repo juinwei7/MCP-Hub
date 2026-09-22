@@ -18,7 +18,6 @@ from mcp.server.stdio import stdio_server
 import mcp.types as types
 
 from gateway import store, custom, composite, skills
-from gateway.config import BASE_URL
 from gateway.dispatch import execute_named_tool, text_block
 
 SEP = "__"
@@ -28,7 +27,7 @@ server = Server("mcp-hub")
 
 _CHECK_ACTION_TOOL = types.Tool(
     name="check_action",
-    description="當某個操作回覆『需要人工確認』時,使用者在核准頁按下核准後,用這個工具(帶 action_id)取得最終結果。",
+    description="當某個操作回覆『需要人工確認』時,使用者在 MCP Hub app 按下核准後,用這個工具(帶 action_id)取得最終結果。",
     inputSchema={
         "type": "object",
         "properties": {"action_id": {"type": "string", "description": "待確認操作的票券 id"}},
@@ -56,6 +55,10 @@ _SKILL_WORKBENCH_TOOL = types.Tool(
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
     store.init_db()
+    # 暫停時一個工具都不給。每次 list_tools 都重讀 DB,所以在 app 裡按下去就生效,
+    # 不用重啟 Claude。
+    if store.is_paused():
+        return []
     out = []
     any_confirm = False  # 有沒有任何暴露出去的工具開了「需確認」
 
@@ -113,6 +116,7 @@ async def list_tools() -> list[types.Tool]:
         out.append(_CHECK_ACTION_TOOL)
     return out
 
+
 def _needs_confirm(name):
     comp = store.get_composite_tool(name)
     if comp:
@@ -132,7 +136,7 @@ async def _resume(action_id):
         return text_block(f"❌ 找不到票券 {action_id}")
     st = a["status"]
     if st == store.WAITING:
-        return text_block(f"⏳ 票券 {action_id} 還在等你在核准頁確認。核准後再呼叫我一次。")
+        return text_block(f"⏳ 票券 {action_id} 還在等你在 MCP Hub app 確認。核准後再呼叫我一次。")
     if st == store.REJECTED:
         return text_block(f"🚫 你已拒絕票券 {action_id}(操作沒有執行)。")
     if st == store.EXECUTED:
@@ -192,6 +196,10 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     store.init_db()
     arguments = arguments or {}
 
+    # client 可能還握著暫停前拿到的工具清單,所以呼叫這端也要擋。
+    if store.is_paused():
+        return text_block("MCP Hub 目前是暫停狀態,沒有可用的工具。到 MCP Hub 的選單列圖示按「繼續」即可恢復。")
+
     if name == "check_action":
         return await _resume(arguments.get("action_id"))
     if name == "skill_workbench":
@@ -202,12 +210,12 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         elicited = await _try_elicit_confirm(name, arguments)
         if elicited is not None:
             return elicited
-        # 退回:票券 + 核准頁流程
+        # 退回:票券流程,使用者到 app 的「待確認」處理
         action_id = store.create_action(name, arguments)
         store.log_call("(confirm)", name, arguments, "blocked_need_confirm")
         return text_block(
             f"⚠️ 「{name}」被設為需人工確認,已建立待確認票券。\n"
-            f"請開啟核准頁:{BASE_URL}/a/{action_id}\n"
+            f"請到 MCP Hub app 的「待確認」核准(票券 {action_id})。\n"
             f"核准後,呼叫 check_action(action_id=\"{action_id}\") 取得結果。"
         )
 

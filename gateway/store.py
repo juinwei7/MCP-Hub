@@ -190,6 +190,11 @@ def init_db():
         c.execute(
             "CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY, created_at TEXT NOT NULL)"
         )
+        # Hub 層級的設定。聚合器是 Claude 另外啟動的程序,和這個 app 只靠這個 DB 溝通,
+        # 所以「暫停」這種全域狀態得寫在這裡才傳得過去。
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
         # MCP 參考目錄(不自動安裝,只列表 + 一鍵建立未設定的下游讓你完成授權)
         c.execute(
             """
@@ -404,6 +409,35 @@ def delete_server(slug):
         c.execute("DELETE FROM servers WHERE slug = ?", (slug,))
         c.execute("DELETE FROM tools_cache WHERE server_slug = ?", (slug,))
         c.execute("DELETE FROM oauth_tokens WHERE server_slug = ?", (slug,))
+
+
+# ── settings ──────────────────────────────────────────────
+
+def get_setting(key, default=None):
+    with _db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    with _db() as c:
+        c.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, str(value)))
+
+
+def is_paused():
+    """暫停時聚合器不對外給任何工具,但每台下游的啟用狀態原封不動。
+
+    這和「把每台下游都停用」不一樣 —— 後者會把你原本的開關狀態洗掉,
+    恢復時沒辦法知道本來哪幾台是開的。
+    """
+    return get_setting("paused", "0") == "1"
+
+
+def set_paused(paused):
+    set_setting("paused", "1" if paused else "0")
 
 
 # ── tools_cache ───────────────────────────────────────────

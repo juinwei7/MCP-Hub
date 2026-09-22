@@ -50,8 +50,18 @@ struct MainWindow: View {
                         .frame(width: 196)
                         .background(Palette.sunken)
                     Divider()
-                    content
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 0) {
+                        // 暫停影響的是整個 Hub,所以橫跨所有畫面 —— 只在下游那頁講的話,
+                        // 人在別頁按下工具開關時會以為那些改動正在生效。
+                        if state.paused {
+                            AlertLine(text: "已暫停 —— Claude 目前看不到任何工具",
+                                      kind: .info,
+                                      actionTitle: "繼續",
+                                      action: { Task { await state.setPaused(false) } })
+                        }
+                        content
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             default:
                 BackendNotReady(state: state)
