@@ -194,7 +194,7 @@ public partial class MainWindow : Window
                 // 待確認一律是琥珀:它不是壞掉,是在等人
                 Health = Controls.Health.Warn,
                 Title = a.Tool,
-                Detail = a.CreatedAt,
+                Detail = Moment(a.CreatedAt),
                 DetailIsMachine = true,
                 Trailing = trailing,
             });
@@ -208,6 +208,13 @@ public partial class MainWindow : Window
 
         FooterText.Text = $"{waiting.Count} 筆待處理,共 {_state.Actions.Count} 筆";
     }
+
+    /// <summary>
+    /// 後端回的是 ISO 8601。那個 T 是給機器看的分隔符,人讀起來只是噪音 ——
+    /// 換成空格。解析不了就原樣顯示,不要為了好看把資訊吃掉。
+    /// </summary>
+    private static string Moment(string iso) =>
+        DateTime.TryParse(iso, out var t) ? t.ToString("yyyy-MM-dd HH:mm:ss") : iso;
 
     // ── 零件 ──────────────────────────────────────────────
 
