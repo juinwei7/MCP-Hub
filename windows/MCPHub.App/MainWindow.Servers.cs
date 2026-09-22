@@ -73,6 +73,12 @@ public partial class MainWindow
             {
                 trailing.Children.Add(Ui.Button(this, "OAuth 授權", "Quiet",
                     () => _ = StartOAuth(slug)));
+                // 授權伺服器可能已經忘了我們註冊過的 client(註冊過期、資料庫重建、
+                // 換環境)。那時 client_info 結構上仍然合法,自動清除看不出來 ——
+                // 使用者只會在瀏覽器看到 invalid_client。沒有這顆的話,唯一的辦法
+                // 是刪掉整台下游重加,連帶失去工具開關與分類。
+                trailing.Children.Add(Ui.Button(this, "清除授權", "Quiet",
+                    () => _ = ResetOAuth(slug, s.Name)));
             }
             trailing.Children.Add(Ui.Button(this, "編輯", "Quiet", () =>
             {
@@ -307,6 +313,23 @@ public partial class MainWindow
         {
             Fail($"打不開瀏覽器:{e.Message}");
         }
+    }
+
+    private async Task ResetOAuth(string slug, string name)
+    {
+        if (MessageBox.Show(
+                $"清除「{name}」的 OAuth 註冊與 token?\n\n"
+                + "下游本身與它的工具設定都會保留。清除後要再按一次「OAuth 授權」。",
+                "MCP Hub", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
+            != MessageBoxResult.OK) return;
+        try
+        {
+            using var c = _state.NewClient();
+            await c.ResetOAuthAsync(slug).ConfigureAwait(true);
+            Fail($"已清除「{name}」的授權。再按一次「OAuth 授權」會重新註冊。");
+            await _state.RefreshAsync().ConfigureAwait(true);
+        }
+        catch (HubClient.HubException e) { Fail(e.Message); }
     }
 
     private async Task DeleteServer(string slug)

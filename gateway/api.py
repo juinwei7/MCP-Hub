@@ -17,7 +17,7 @@ import asyncio
 import hmac
 import json
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 
 from gateway import store, hub, auth
 from gateway.config import API_TOKEN, DB_PATH
@@ -483,6 +483,24 @@ def _sse(event, data):
 
 
 # ── OAuth ─────────────────────────────────────────────────
+@guarded.delete("/servers/{slug}/oauth", status_code=204)
+def oauth_reset(slug: str):
+    """
+    忘掉這台下游的 OAuth 註冊與 token,下次授權會重跑一次動態註冊。
+
+    為什麼需要一個明確的動作:授權伺服器可能已經忘了我們註冊過的 client
+    (註冊過期、資料庫重建、換環境)。那種情況下 client_info 在結構上仍然合法,
+    所以自動清除的判斷看不出來 —— 使用者按「OAuth 授權」只會在瀏覽器看到
+    invalid_client,而 app 裡沒有任何辦法修復,只能把整台下游刪掉重加,
+    連帶失去工具開關和分類。
+    """
+    _get_server_or_404(slug)
+    store.clear_oauth(slug)
+    store.set_server_status(slug, "unknown", "已清除授權,需要重新授權")
+    publish("server_changed", {"slug": slug})
+    return Response(status_code=204)
+
+
 @guarded.post("/servers/{slug}/oauth/start")
 async def oauth_start(slug: str):
     """

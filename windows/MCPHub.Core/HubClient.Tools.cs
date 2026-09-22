@@ -129,6 +129,10 @@ public sealed partial class HubClient
     /// callback 由後端的 /oauth/callback 接住 —— 那也是為什麼 API 一定要和
     /// 授權流程在同一個行程裡。
     /// </summary>
+    /// <summary>忘掉這台下游的 OAuth 註冊與 token,下次授權會重跑一次動態註冊。</summary>
+    public Task ResetOAuthAsync(string slug, CancellationToken ct = default) =>
+        SendVoidAsync(HttpMethod.Delete, $"servers/{slug}/oauth", null, ct);
+
     public Task<OAuthStart> StartOAuthAsync(string slug, CancellationToken ct = default) =>
         SendAsync<OAuthStart>(HttpMethod.Post, $"servers/{slug}/oauth/start",
                               new { }, ct);

@@ -83,6 +83,8 @@ server 都原樣保留。Codex 的 TOML 是用文字層級增修的,不是整份
 - **人工確認** —— 把危險工具標成「需確認」,呼叫時走對話內確認或票券核准。
 - **金鑰靜態加密** —— bearer token / env / headers / OAuth token 以 Fernet 加密存 SQLite,金鑰另存 `.secret_key`。
 - **健康監測** —— 背景定時檢查下游,狀態以列首色條呈現,支援一鍵「全部檢查」。
+- **OAuth 2.1 + PKCE** —— 動態註冊(DCR)、自動換新 token。授權伺服器忘了我們的
+  註冊時,可以「清除授權」重跑一次註冊,不必刪掉整台下游。
 - **呼叫記錄** —— 每次經 Hub 的呼叫都入庫,可分頁、只看錯誤。
 - **匯入 / 匯出** —— 讀 Claude Desktop / Claude Code 的設定匯入,或貼 mcpServers JSON;匯出預設**不含**金鑰。
 
@@ -184,7 +186,7 @@ macOS `~/Library/Application Support/MCP Hub/`、Windows `%LOCALAPPDATA%\MCP Hub
 ## 開發
 
 ```bash
-./.venv/bin/python -m unittest discover -s tests    # Python:168
+./.venv/bin/python -m unittest discover -s tests    # Python:172
 cd macos   && make test                             # Swift 16 + 生命週期驗收 10
 cd windows && dotnet test MCPHub.Core.Tests/...     # .NET:24(需 Windows)
 ```

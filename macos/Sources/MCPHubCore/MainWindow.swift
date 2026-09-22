@@ -327,6 +327,12 @@ private struct ServersView: View {
                         Button("重抓工具") { refresh(s) }
                         if s.authType == "oauth" {
                             Button("OAuth 授權…") { startOAuth(s) }
+                            // 授權伺服器可能已經忘了我們註冊過的 client(註冊過期、
+                            // 資料庫重建、換環境)。那時 client_info 結構上仍然合法,
+                            // 所以自動清除看不出來 —— 使用者只會在瀏覽器看到
+                            // invalid_client。沒有這一項的話,唯一的辦法是刪掉整台
+                            // 下游重加,連帶失去工具開關與分類。
+                            Button("清除授權並重新註冊…") { resetOAuth(s) }
                         }
                         Divider()
                         Button("刪除…", role: .destructive) { deleting = s }
@@ -377,6 +383,18 @@ private struct ServersView: View {
 
     private func checkAll() {
         Task { await state.checkAll(); stamp() }
+    }
+
+    private func resetOAuth(_ s: HubClient.Server) {
+        Task {
+            do {
+                try await state.client.resetOAuth(s.slug)
+                state.lastError = "已清除「\(s.name)」的授權。再按一次「OAuth 授權」會重新註冊。"
+            } catch {
+                state.lastError = error.localizedDescription
+            }
+            await state.refresh()
+        }
     }
 
     private func startOAuth(_ s: HubClient.Server) {

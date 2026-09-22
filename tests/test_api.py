@@ -340,6 +340,44 @@ class TestActions(ApiTest):
 
 
 # ── E. OAuth ──────────────────────────────────────────────
+class TestOAuthReset(ApiTest):
+    """
+    清除授權。
+
+    授權伺服器可能已經忘了我們註冊過的 client(註冊過期、資料庫重建、換環境)。
+    那種情況下 client_info 在結構上仍然合法,自動清除的判斷看不出來 ——
+    實測確認過:塞一個伺服器不認得的 client_id,流程會照樣沿用它,
+    產生的授權網址帶著死掉的 client_id。使用者只會在瀏覽器看到 invalid_client,
+    而 app 裡沒有別的辦法修復。這個端點就是那個出口。
+    """
+
+    def test_clears_client_and_tokens(self):
+        self.mkserver("oauthreset", auth_type="oauth")
+        store.set_oauth_client_info("oauthreset", '{"client_id": "old"}')
+        store.set_oauth_tokens("oauthreset", '{"access_token": "old"}', 999.0)
+
+        r = self.c.delete("/api/v1/servers/oauthreset/oauth", headers=AUTH)
+        self.assertEqual(r.status_code, 204)
+
+        self.assertIsNone(store.get_oauth_client_info("oauthreset"))
+        self.assertIsNone(store.get_oauth_tokens("oauthreset"))
+        self.assertIsNone(store.get_oauth_expiry("oauthreset"))
+
+    def test_keeps_the_server_itself(self):
+        # 重點就在這裡:以前唯一的辦法是刪掉整台下游,連帶失去工具開關與分類
+        self.mkserver("keepme", auth_type="oauth")
+        store.set_oauth_client_info("keepme", '{"client_id": "old"}')
+        self.c.delete("/api/v1/servers/keepme/oauth", headers=AUTH)
+        self.assertIsNotNone(store.get_server("keepme"))
+
+    def test_missing_server_returns_404(self):
+        self.assertEqual(
+            self.c.delete("/api/v1/servers/ghost/oauth", headers=AUTH).status_code, 404)
+
+    def test_requires_token(self):
+        self.assertEqual(self.c.delete("/api/v1/servers/any/oauth").status_code, 401)
+
+
 class TestOAuth(ApiTest):
     def test_stdio_server_rejected(self):
         self.mkserver("stdiosrv", transport="stdio", command="npx")

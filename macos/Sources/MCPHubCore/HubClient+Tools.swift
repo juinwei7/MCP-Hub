@@ -239,6 +239,11 @@ extension HubClient {
         enum CodingKeys: String, CodingKey { case authorizationURL = "authorization_url" }
     }
 
+    /// 忘掉這台下游的 OAuth 註冊與 token,下次授權會重跑一次動態註冊。
+    func resetOAuth(_ slug: String) async throws {
+        try await requestVoid("DELETE", "/servers/\(escaped(slug))/oauth", body: nil)
+    }
+
     func startOAuth(_ slug: String) async throws -> OAuthStart {
         try await request("POST", "/servers/\(escaped(slug))/oauth/start", body: [:])
     }
