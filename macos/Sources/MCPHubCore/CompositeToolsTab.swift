@@ -15,9 +15,17 @@ struct CompositeToolsTab: View {
     @State private var banner: (String, AlertLine.Kind)?
 
     var body: some View {
-        HSplitView {
-            list.frame(minWidth: 200, idealWidth: 240, maxWidth: 320)
-            detail.frame(minWidth: 420)
+        Group {
+            if state.compositeTools.isEmpty, !creating {
+                detail   // 理由同 CustomToolsTab:沒東西可列就不留空欄
+            } else {
+                // 固定寬度,理由同 CustomToolsTab
+                HStack(spacing: 0) {
+                    list.frame(width: 252)
+                    Divider()
+                    detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
         }
         .task {
             await state.loadCompositeTools()
@@ -44,6 +52,10 @@ struct CompositeToolsTab: View {
                 }
             }
             .listStyle(.sidebar)
+            // .sidebar 在非 sidebar 位置會變成半透明材質,把桌布透進來。
+            // 這欄是視窗內部的清單,要有自己的底。
+            .scrollContentBackground(.hidden)
+            .background(Palette.sunken)
 
             ActionBar {
                 Text("\(state.compositeTools.count) 個")

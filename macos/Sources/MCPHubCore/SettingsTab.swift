@@ -32,12 +32,21 @@ struct SettingsTab: View {
     }
 
     var body: some View {
-        HSplitView {
+        // 固定寬度而不是 HSplitView:HSplitView 不遵守子項的 maxWidth,
+        // 視窗一拉寬清單欄就跟著撐開,留下一大片空白。這欄只放五個固定標題,
+        // 本來就不需要能拖。
+        HStack(spacing: 0) {
             List(Section.allCases, selection: $section) { s in
                 Label(s.rawValue, systemImage: s.icon).tag(s)
             }
             .listStyle(.sidebar)
-            .frame(minWidth: 150, idealWidth: 170, maxWidth: 220)
+            // .sidebar 在非 sidebar 位置會變成半透明材質,把桌布透進來。
+            // 這欄是視窗內部的清單,要有自己的底。
+            .scrollContentBackground(.hidden)
+            .background(Palette.sunken)
+            .frame(width: 178)
+
+            Divider()
 
             Group {
                 switch section {
@@ -48,7 +57,7 @@ struct SettingsTab: View {
                 case .export: ExportView(state: state)
                 }
             }
-            .frame(minWidth: 420)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

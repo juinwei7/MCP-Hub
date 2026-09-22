@@ -15,9 +15,19 @@ struct CustomToolsTab: View {
     @State private var busy = false
 
     var body: some View {
-        HSplitView {
-            list.frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
-            detail.frame(minWidth: 380)
+        Group {
+            if state.customTools.isEmpty, draft == nil {
+                // 一筆都沒有時不留空清單欄 —— 空欄配上右邊的空狀態是講了兩次同一件事
+                detail
+            } else {
+                // 固定寬度而不是 HSplitView:HSplitView 不遵守子項的 maxWidth,
+                // 視窗一拉寬清單欄就被撐到一半以上,右邊的編輯區反而被擠掉。
+                HStack(spacing: 0) {
+                    list.frame(width: 272)
+                    Divider()
+                    detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
         }
         .task { await state.loadCustomTools() }
     }
@@ -35,6 +45,10 @@ struct CustomToolsTab: View {
                 }
             }
             .listStyle(.sidebar)
+            // .sidebar 在非 sidebar 位置會變成半透明材質,把桌布透進來。
+            // 這欄是視窗內部的清單,要有自己的底。
+            .scrollContentBackground(.hidden)
+            .background(Palette.sunken)
 
             ActionBar {
                 Text("\(state.customTools.count) 個")

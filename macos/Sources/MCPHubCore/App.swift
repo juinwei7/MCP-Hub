@@ -54,9 +54,15 @@ final class AppState: ObservableObject {
 
     func refresh() async {
         do {
-            let (srv, act) = try await (client.servers(), client.actions())
+            // 工具數也一起抓:側邊欄一直顯示著這兩個計數,只在點進分頁時才載入的話,
+            // 在那之前它們會是 0 —— 錯的數字比沒有數字更糟。
+            let (srv, act, custom, comp) = try await (
+                client.servers(), client.actions(),
+                client.customTools(), client.compositeTools())
             servers = srv
             actions = act
+            customTools = custom
+            compositeTools = comp
             lastError = nil
 
             notifier.sync(actions: act, servers: srv)
@@ -132,13 +138,17 @@ final class WindowController {
     func show() {
         if window == nil {
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
+                contentRect: NSRect(x: 0, y: 0, width: 1060, height: 680),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false)
             w.title = "MCP Hub"
             w.contentView = NSHostingView(rootView: MainWindow(state: state))
             w.isReleasedWhenClosed = false   // 關掉只是隱藏,選單列還要能再開
+            // 側邊欄 196 + 分頁內欄 272 + 編輯區,再窄下去右邊的表單就開始換行
+            w.minSize = NSSize(width: 940, height: 580)
             w.center()
+            // 記住使用者調過的大小,下次開回同一個位置
+            w.setFrameAutosaveName("MCPHubMainWindow")
             window = w
         }
         // accessory 政策下要主動搶焦點,否則視窗會開在背景

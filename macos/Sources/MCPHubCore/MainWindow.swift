@@ -41,57 +41,64 @@ struct MainWindow: View {
         Group {
             switch state.backend {
             case .ready:
-                NavigationSplitView {
+                // 自己排版而不是用 NavigationSplitView:這個視窗是手刻的 NSWindow +
+                // NSHostingView,SwiftUI 在那種宿主裡裝不上 AppKit 的 sidebar,
+                // 結果是側邊欄被畫成浮空的圓角清單,還會自動長出一顆會漂移的收合鈕。
+                // 七個區域本來就該一直看得到,能收合沒有價值,索性不要那顆按鈕。
+                HStack(spacing: 0) {
                     sidebar
-                        .navigationSplitViewColumnWidth(min: 170, ideal: 188, max: 240)
-                } detail: {
+                        .frame(width: 196)
+                        .background(Palette.sunken)
+                    Divider()
                     content
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             default:
                 BackendNotReady(state: state)
             }
         }
-        .frame(minWidth: 860, minHeight: 540)
         .background(Palette.ground)
+        // 一次把整棵樹的強調色換掉。borderedProminent 按鈕、Toggle、List 選取
+        // 預設都吃系統藍 —— 在這個冷調面板裡那是唯一不屬於這裡的顏色。
+        .tint(Palette.accent)
     }
 
     // ── 側邊欄 ────────────────────────────────────────────
     private var sidebar: some View {
-        List(selection: $section) {
-            SwiftUI.Section("監控") {
-                item(.servers, count: state.servers.count)
-                item(.tools, count: state.totalTools)
-                item(.logs, count: nil)
+        VStack(alignment: .leading, spacing: Style.Space.section) {
+            navGroup("監控") {
+                NavItem(section: .servers, count: state.servers.count, selection: $section)
+                NavItem(section: .tools, count: state.totalTools, selection: $section)
+                NavItem(section: .logs, count: nil, selection: $section)
                 // 待確認是唯一需要動手的東西 —— 有值時著色
-                item(.actions, count: state.pendingCount, attention: state.pendingCount > 0)
+                NavItem(section: .actions, count: state.pendingCount,
+                        attention: state.pendingCount > 0, selection: $section)
             }
-            SwiftUI.Section("工具") {
-                item(.customTools, count: state.customTools.count)
-                item(.composites, count: state.compositeTools.count)
+            navGroup("工具") {
+                NavItem(section: .customTools, count: state.customTools.count,
+                        selection: $section)
+                NavItem(section: .composites, count: state.compositeTools.count,
+                        selection: $section)
             }
-            SwiftUI.Section("其他") {
-                item(.settings, count: nil)
+            navGroup("其他") {
+                NavItem(section: .settings, count: nil, selection: $section)
             }
+            Spacer(minLength: 0)
         }
-        .listStyle(.sidebar)
+        .padding(.horizontal, Style.Space.tight)
+        .padding(.vertical, Style.Space.section)
     }
 
-    private func item(_ s: Section, count: Int?, attention: Bool = false) -> some View {
-        HStack(spacing: Style.Space.row) {
-            Image(systemName: s.icon)
-                .font(.system(size: 12))
-                .frame(width: 16)
-            Text(s.title).font(Style.Face.body)
-            Spacer()
-            if let count {
-                Text("\(count)")
-                    .font(Style.Face.number)
-                    .monospacedDigit()
-                    .foregroundStyle(attention ? Palette.warn : Palette.ink3)
-                    .fontWeight(attention ? .medium : .regular)
-            }
+    private func navGroup<C: View>(_ title: String,
+                                   @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(Style.Face.meta)
+                .foregroundStyle(Palette.ink3)
+                .padding(.horizontal, Style.Space.row)
+                .padding(.bottom, Style.Space.tight)
+            content()
         }
-        .tag(s)
     }
 
     // ── 內容 ──────────────────────────────────────────────
@@ -106,6 +113,53 @@ struct MainWindow: View {
         case .composites: CompositeToolsTab(state: state)
         case .settings: SettingsTab(state: state)
         }
+    }
+}
+
+/// 側邊欄的一列。
+///
+/// 自己畫而不是靠 List 的 selection:系統的選取態是系統藍,而這份設計裡
+/// 藍色是唯一不屬於這個冷調面板的顏色 —— 選取是可互動的狀態,該用強調色。
+private struct NavItem: View {
+    let section: MainWindow.Section
+    let count: Int?
+    var attention = false
+    @Binding var selection: MainWindow.Section
+
+    @State private var hovering = false
+
+    private var isOn: Bool { selection == section }
+
+    var body: some View {
+        Button { selection = section } label: {
+            HStack(spacing: Style.Space.row) {
+                Image(systemName: section.icon)
+                    .font(.system(size: 12))
+                    .frame(width: 17)
+                    .foregroundStyle(isOn ? Palette.accent : Palette.ink2)
+                Text(section.title)
+                    .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                    .foregroundStyle(isOn ? Palette.ink : Palette.ink2)
+                Spacer(minLength: Style.Space.tight)
+                if let count {
+                    Text("\(count)")
+                        .font(Style.Face.number)
+                        .monospacedDigit()
+                        .foregroundStyle(attention ? Palette.warn : Palette.ink3)
+                        .fontWeight(attention ? .semibold : .regular)
+                }
+            }
+            .padding(.horizontal, Style.Space.row)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: Style.radius, style: .continuous)
+                    .fill(isOn ? Palette.accent.opacity(0.16)
+                               : (hovering ? Palette.line.opacity(0.45) : .clear)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(section.title)
     }
 }
 
