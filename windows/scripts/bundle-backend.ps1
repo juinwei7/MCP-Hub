@@ -91,9 +91,15 @@ Get-ChildItem -Recurse -Force -Directory -Filter '__pycache__' $backend |
 # 驗的是「內附的這一份」能不能用,不是 runner 上剛好裝了什麼
 Say "驗證內附的後端可用"
 $env:PYTHONPATH = $backend
-& $py -c "import gateway.web, gateway.api, gateway.store, gateway.hub_server; print('  gateway 匯入成功')"
-if ($LASTEXITCODE -ne 0) { Die "內附的後端匯入失敗 —— 可能缺依賴" }
+# Windows 主控台預設 cp1252,編不了中文。這裡跑的是 python -c,
+# 不會經過 gateway.console.use_utf8,所以要自己把 UTF-8 模式打開 ——
+# 否則印出來的字本身就會丟 UnicodeEncodeError,看起來像匯入失敗。
+$env:PYTHONUTF8 = '1'
+& $py -c "import gateway.web, gateway.api, gateway.store, gateway.hub_server; print('  gateway import ok')"
+$ok = $LASTEXITCODE -eq 0
 Remove-Item Env:\PYTHONPATH
+Remove-Item Env:\PYTHONUTF8
+if (-not $ok) { Die "內附的後端匯入失敗 —— 可能缺依賴" }
 
 $size = (Get-ChildItem -Recurse -Force $Dest | Measure-Object -Property Length -Sum).Sum
 Write-Host ("OK 已內附後端,發佈目錄現在是自足的({0:N0} MB)" -f ($size / 1MB))

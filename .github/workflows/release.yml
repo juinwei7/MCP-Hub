@@ -303,7 +303,9 @@ jobs:
             Write-Host "::error::執行檔版本 $v 與 tag 不符"; exit 1
           }
           $env:PYTHONPATH = (Resolve-Path 'publish\backend')
-          & 'publish\backend\python.exe' -c "import gateway.web, gateway.hub_server; print('後端可匯入')"
+          # PYTHONUTF8:Windows 主控台預設 cp1252,印中文會炸在編碼而不是匯入
+          $env:PYTHONUTF8 = '1'
+          & 'publish\backend\python.exe' -c "import gateway.web, gateway.hub_server; print('backend import ok')"
           if ($LASTEXITCODE -ne 0) { Write-Host '::error::內附後端匯入失敗'; exit 1 }
 
       - name: 壓成 ZIP
