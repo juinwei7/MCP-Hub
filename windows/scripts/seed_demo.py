@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from gateway import store  # noqa: E402
+from gateway.console import use_utf8  # noqa: E402
 
 
 def add(slug, name, url, *, enabled=True, status="ok", detail="", tools=0):
@@ -28,6 +29,10 @@ def add(slug, name, url, *, enabled=True, status="ok", detail="", tools=0):
 
 
 def main():
+    # Windows 的主控台預設是 cp1252,編不了中文 —— 不先切 UTF-8 的話,
+    # print 本身就會丟 UnicodeEncodeError。專案裡早就有這個工具,
+    # 新腳本忘了用就會再踩一次。
+    use_utf8()
     store.init_db()
 
     # 健康 —— 綠色條,第二行是等寬的網址
