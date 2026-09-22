@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- 系統匣圖示用 WinForms 的 NotifyIcon:Shell_NotifyIcon 的 P/Invoke 要自己
+         處理訊息迴圈、氣球提示、DPI,而 NotifyIcon 已經全部包好,而且它跟
+         WPF 同進程共存沒有問題。 -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- 警告當錯誤:開發機是 macOS,沒有辦法執行,編譯器是最主要的把關 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WFAC010 是 WinForms 的分析器,看到 manifest 裡有 DPI 設定就叫我們改用
+         ApplicationHighDpiMode。但那個屬性產生的是 WinForms 的啟動程式碼,
+         這是 WPF app,根本不會執行到 —— WPF 認的就是 manifest。
+         所以這個建議在這裡是錯的,明確關掉。 -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+    <AssemblyName>MCPHub</AssemblyName>
+    <RootNamespace>MCPHub.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms 和 WPF 有幾十個同名型別:Application、Button、Brush、Color、
+         UserControl、FontFamily…。兩邊的 implicit using 同時開著,每一個都變成
+         CS0104「模稜兩可的參考」。
+
+         WPF 是主體,所以留 WPF 的、關掉 WinForms 與 Drawing 的 —— 只有系統匣
+         那個檔案需要它們,在那裡明確 using 就好。 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MCPHub.Core\MCPHub.Core.csproj" />
+  </ItemGroup>
+
+</Project>

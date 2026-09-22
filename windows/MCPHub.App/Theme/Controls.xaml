@@ -1,0 +1,239 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!--
+      尺度與控制項。和 macOS 版同一套:
+        · 等寬字代表「機器產生的值」(網址、slug、耗時、時間戳)
+        · 系統字代表人寫的標籤 —— 這個區分本身在傳達訊息
+        · 顏色只表達狀態,強調色只出現在可互動的東西上
+    -->
+
+    <!-- 字體。中文要明確指定,否則 Segoe UI 找不到字會退到很醜的預設字型 -->
+    <FontFamily x:Key="UiFont">Segoe UI, Microsoft JhengHei UI, Microsoft YaHei UI</FontFamily>
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
+
+    <sys:Double x:Key="RowHeight">42</sys:Double>
+    <CornerRadius x:Key="Radius">6</CornerRadius>
+
+    <!-- ── 文字 ──────────────────────────────────────────── -->
+
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="17"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    </Style>
+
+    <Style x:Key="RowTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    </Style>
+
+    <Style x:Key="Body" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink2}"/>
+    </Style>
+
+    <Style x:Key="Meta" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink3}"/>
+    </Style>
+
+    <!-- 機器產生的值。等寬不是裝飾 —— 下游異常時第二行會從等寬的網址換成
+         系統字的錯誤原因,字體本身就在說「這是給人看的訊息」 -->
+    <Style x:Key="Mono" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink3}"/>
+    </Style>
+
+    <Style x:Key="MonoNumber" TargetType="TextBlock" BasedOn="{StaticResource Mono}">
+        <Setter Property="FontSize" Value="12"/>
+    </Style>
+
+    <!-- ── 開關 ──────────────────────────────────────────── -->
+    <!-- 系統預設的 CheckBox 在這個面板裡語意不對:核取方塊是「選項」,
+         而這些是「開 / 關」。開啟時用強調色,不是系統藍。 -->
+
+    <Style x:Key="HubSwitch" TargetType="ToggleButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="True"/>
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Track"
+                                CornerRadius="10"
+                                Background="{DynamicResource Line}"/>
+                        <Ellipse x:Name="Thumb"
+                                 Width="16" Height="16" Margin="2,0,2,0"
+                                 HorizontalAlignment="Left"
+                                 Fill="{DynamicResource Surface}"/>
+                        <Border x:Name="FocusRing"
+                                CornerRadius="10" BorderThickness="2"
+                                BorderBrush="{DynamicResource Accent}"
+                                Margin="-3" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background"
+                                    Value="{DynamicResource Accent}"/>
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment"
+                                    Value="Right"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ── 側邊欄項目 ────────────────────────────────────── -->
+    <!-- 自己畫而不是用系統的 ListBox 選取態:那個選取態是系統藍,
+         而藍色是這個冷調面板裡唯一不屬於這裡的顏色。 -->
+
+    <Style x:Key="NavItem" TargetType="RadioButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Margin" Value="0,1,0,1"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Bg" CornerRadius="6" Background="Transparent"
+                            Padding="10,0,10,0">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background"
+                                    Value="{DynamicResource HoverWash}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bg" Property="Background"
+                                    Value="{DynamicResource AccentWash}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ── 按鈕 ──────────────────────────────────────────── -->
+
+    <Style x:Key="QuietButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="Padding" Value="12,0,12,0"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="6"
+                            Background="{DynamicResource Sunken}"
+                            BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background"
+                                    Value="{DynamicResource HoverWash}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource QuietButton}">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="6"
+                            Background="{DynamicResource Accent}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.88"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 警示線裡的修復動作:是連結不是按鈕,因為它不該和主要動作搶份量 -->
+    <Style x:Key="LinkButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <TextBlock Text="{TemplateBinding Content}"
+                               Foreground="{TemplateBinding Foreground}"
+                               FontFamily="{TemplateBinding FontFamily}"
+                               FontSize="{TemplateBinding FontSize}"
+                               FontWeight="{TemplateBinding FontWeight}"
+                               TextDecorations="Underline"
+                               VerticalAlignment="Center"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ── 捲軸 ──────────────────────────────────────────── -->
+    <!-- 預設捲軸有灰色軌道底,在深色面板上像一條突兀的亮帶 -->
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Width" Value="8"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track.Thumb>
+                            <Thumb>
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb">
+                                        <Border CornerRadius="4" Margin="2,0,2,0"
+                                                Background="{DynamicResource Line}"/>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

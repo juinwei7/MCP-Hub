@@ -113,6 +113,20 @@ public sealed class HubClient : IDisposable
         public HubException(string message, string? code = null) : base(message) => Code = code;
     }
 
+    // ── 總開關 ────────────────────────────────────────────
+    // Hub 層級的暫停。和「把每台下游停用」不同 —— 它不動下游的啟用狀態,
+    // 恢復時才知道本來哪幾台是開的。
+
+    public sealed record PausedState(
+        [property: JsonPropertyName("paused")] bool Paused);
+
+    public async Task<bool> PausedAsync(CancellationToken ct = default) =>
+        (await GetAsync<PausedState>("paused", ct).ConfigureAwait(false)).Paused;
+
+    public async Task<bool> SetPausedAsync(bool paused, CancellationToken ct = default) =>
+        (await SendAsync<PausedState>(HttpMethod.Put, "paused",
+                                      new { paused }, ct).ConfigureAwait(false)).Paused;
+
     // ── 下游 ──────────────────────────────────────────────
 
     public Task<IReadOnlyList<Server>> ServersAsync(CancellationToken ct = default) =>

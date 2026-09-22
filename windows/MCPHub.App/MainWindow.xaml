@@ -1,0 +1,131 @@
+<Window x:Class="MCPHub.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:MCPHub.App.Controls"
+        Title="MCP Hub" Height="680" Width="1000"
+        MinHeight="560" MinWidth="880"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Ground}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+    <!--
+      側邊欄而不是上方分頁:這個資訊量用分頁列會擠,而且分頁沒有地方放計數。
+      側邊欄讓「有幾個待確認」在任何畫面都看得到。
+    -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="196"/>
+            <ColumnDefinition Width="1"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ── 側邊欄 ────────────────────────────────────── -->
+        <Grid Grid.Column="0" Background="{DynamicResource Sunken}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="5,16,5,0">
+                <TextBlock Text="監控" Style="{DynamicResource Meta}"
+                           Margin="10,0,0,5"/>
+                <RadioButton x:Name="NavServers" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" IsChecked="True" Checked="OnNavChanged">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="NavServersLabel" Text="下游"
+                                   FontFamily="Segoe UI, Microsoft JhengHei UI"
+                                   FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="NavServersCount" Grid.Column="1"
+                                   Style="{DynamicResource MonoNumber}"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </RadioButton>
+                <RadioButton x:Name="NavActions" Style="{DynamicResource NavItem}"
+                             GroupName="Nav" Checked="OnNavChanged">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="NavActionsLabel" Text="待確認"
+                                   FontFamily="Segoe UI, Microsoft JhengHei UI"
+                                   FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="NavActionsCount" Grid.Column="1"
+                                   Style="{DynamicResource MonoNumber}"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </RadioButton>
+            </StackPanel>
+
+            <!--
+              總開關。系統匣也有一顆,但那不能是唯一的路 —— Windows 會把塞不下的
+              圖示收進小箭頭裡,收起來之後就找不到了。
+              標成「供應中 / 已暫停」而不是「暫停」開關:開 = 供應中,和下游那些
+              開關同方向,不然同一個視窗裡會有兩種相反的開關語意。
+            -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,14">
+                <Rectangle Height="1" Fill="{DynamicResource Line}" Margin="0,0,0,10"/>
+                <Grid Margin="15,0,14,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Ellipse x:Name="SupplyDot" Width="6" Height="6"
+                             VerticalAlignment="Center" Margin="0,0,9,0"/>
+                    <TextBlock x:Name="SupplyLabel" Grid.Column="1"
+                               Style="{DynamicResource Body}" VerticalAlignment="Center"/>
+                    <ToggleButton x:Name="SupplySwitch" Grid.Column="2"
+                                  Style="{DynamicResource HubSwitch}"
+                                  Click="OnSupplyToggled"/>
+                </Grid>
+            </StackPanel>
+        </Grid>
+
+        <Rectangle Grid.Column="1" Fill="{DynamicResource Line}"/>
+
+        <!-- ── 內容 ──────────────────────────────────────── -->
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 暫停影響的是整個 Hub,所以橫跨所有畫面 -->
+            <c:AlertLine x:Name="PausedAlert" Grid.Row="0"
+                         Kind="Info" ActionTitle="繼續"
+                         Visibility="Collapsed"
+                         ActionClicked="OnResume"/>
+
+            <!-- 錯誤也是全域的 -->
+            <c:AlertLine x:Name="ErrorAlert" Grid.Row="1"
+                         Kind="Problem" ActionTitle="知道了"
+                         Visibility="Collapsed"
+                         ActionClicked="OnDismissError"/>
+
+            <Grid Grid.Row="2" Margin="18,16,16,12">
+                <TextBlock x:Name="PageTitle" Style="{DynamicResource SectionTitle}"
+                           VerticalAlignment="Center"/>
+                <StackPanel x:Name="PageActions" Orientation="Horizontal"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            </Grid>
+
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Rows"/>
+            </ScrollViewer>
+
+            <Border Grid.Row="4" BorderThickness="0,1,0,0"
+                    BorderBrush="{DynamicResource LineSoft}" Padding="18,8,18,8">
+                <TextBlock x:Name="FooterText" Style="{DynamicResource Meta}"/>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

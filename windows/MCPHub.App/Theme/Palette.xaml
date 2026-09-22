@@ -1,0 +1,56 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      和 macOS 版同一套色票。不是把淺色反轉 —— 反轉會讓語意色在深底上失去區辨度,
+      所以深色各有一組值。ThemeManager 會依系統設定把其中一組塞進 Application.Resources。
+
+      這份是「淺色」。深色在 Palette.Dark.xaml,兩份的 key 必須一模一樣,
+      少一個 key 就會在切換主題時丟出 XamlParseException,而且是執行期才炸。
+    -->
+
+    <!-- 底 —— 冷調石墨,偏藍綠。這是網路工具,不是文件工具 -->
+    <Color x:Key="GroundColor">#F4F7F7</Color>
+    <Color x:Key="SurfaceColor">#FFFFFF</Color>
+    <Color x:Key="SunkenColor">#ECF1F1</Color>
+
+    <!-- 字 -->
+    <Color x:Key="InkColor">#141A1C</Color>
+    <Color x:Key="Ink2Color">#4A585C</Color>
+    <Color x:Key="Ink3Color">#7C8A8E</Color>
+
+    <!-- 線 -->
+    <Color x:Key="LineColor">#DCE4E5</Color>
+    <Color x:Key="LineSoftColor">#E9EFEF</Color>
+
+    <!-- 訊號 / 連線的意象。只用在可互動的東西上,不當裝飾。
+         刻意避開綠色 —— 綠是語意色,代表「健康」,不能同時代表「可以按」 -->
+    <Color x:Key="AccentColor">#0D7482</Color>
+
+    <!-- 語意色 —— 只表達狀態 -->
+    <Color x:Key="OkColor">#2C7A52</Color>
+    <Color x:Key="WarnColor">#9E6208</Color>
+    <Color x:Key="DownColor">#B03A2C</Color>
+    <Color x:Key="OffColor">#A3AEB1</Color>
+
+    <SolidColorBrush x:Key="Ground"   Color="{StaticResource GroundColor}"/>
+    <SolidColorBrush x:Key="Surface"  Color="{StaticResource SurfaceColor}"/>
+    <SolidColorBrush x:Key="Sunken"   Color="{StaticResource SunkenColor}"/>
+    <SolidColorBrush x:Key="Ink"      Color="{StaticResource InkColor}"/>
+    <SolidColorBrush x:Key="Ink2"     Color="{StaticResource Ink2Color}"/>
+    <SolidColorBrush x:Key="Ink3"     Color="{StaticResource Ink3Color}"/>
+    <SolidColorBrush x:Key="Line"     Color="{StaticResource LineColor}"/>
+    <SolidColorBrush x:Key="LineSoft" Color="{StaticResource LineSoftColor}"/>
+    <SolidColorBrush x:Key="Accent"   Color="{StaticResource AccentColor}"/>
+    <SolidColorBrush x:Key="Ok"       Color="{StaticResource OkColor}"/>
+    <SolidColorBrush x:Key="Warn"     Color="{StaticResource WarnColor}"/>
+    <SolidColorBrush x:Key="Down"     Color="{StaticResource DownColor}"/>
+    <SolidColorBrush x:Key="Off"      Color="{StaticResource OffColor}"/>
+
+    <!-- 強調色的淡底:選中的側邊欄項目、警示線的背景 -->
+    <SolidColorBrush x:Key="AccentWash" Color="{StaticResource AccentColor}" Opacity="0.16"/>
+    <SolidColorBrush x:Key="DownWash"   Color="{StaticResource DownColor}"   Opacity="0.10"/>
+    <SolidColorBrush x:Key="WarnWash"   Color="{StaticResource WarnColor}"   Opacity="0.10"/>
+    <SolidColorBrush x:Key="HoverWash"  Color="{StaticResource LineColor}"   Opacity="0.55"/>
+
+</ResourceDictionary>

@@ -31,3 +31,8 @@ build/
 
 # 規格文件只留本機,不進版控
 specs/
+
+# .NET
+windows/**/bin/
+windows/**/obj/
+windows/shots/

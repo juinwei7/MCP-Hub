@@ -126,6 +126,88 @@ jobs:
         # 含 Job Object 的實機驗證:起真的程序、關掉 job、確認被收掉
         run: dotnet test MCPHub.Core.Tests/MCPHub.Core.Tests.csproj -c Release --verbosity normal
 
+      - name: 建置 app
+        working-directory: windows
+        run: dotnet build MCPHub.App/MCPHub.App.csproj -c Release
+
+  # ── Windows app:實際起來截圖 ──────────────────────────
+  # 開發機是 macOS,這個 app 在本機執行不了。編譯器抓得到型別錯誤,但抓不到
+  # 版面跑掉、顏色在深色模式下看不見、控制項疊在一起。這個 job 是唯一能真的
+  # 看到畫面的地方,所以把截圖變成建置的一部分 —— 截出來的圖存成 artifact。
+  windows-app-shot:
+    name: Windows app 截圖
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 準備後端環境
+        # app 會用 MCPHUB_PYTHON / MCPHUB_REPO 指向的 venv 起後端。
+        # 沒有它的話只截得到「後端啟動失敗」那個畫面。
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install --upgrade pip
+          .venv\Scripts\pip.exe install -r requirements.txt
+
+      - name: 建置
+        working-directory: windows
+        run: dotnet build MCPHub.App/MCPHub.App.csproj -c Release
+
+      - name: 起 app 並截圖(淺色)
+        working-directory: windows
+        env:
+          MCPHUB_PYTHON: ${{ github.workspace }}\.venv\Scripts\python.exe
+          MCPHUB_REPO: ${{ github.workspace }}
+          MCPHUB_DATA_DIR: ${{ runner.temp }}\mcphub-light
+        run: |
+          pwsh -File scripts/screenshot.ps1 `
+            -Exe MCPHub.App\bin\Release\net8.0-windows\MCPHub.exe `
+            -Out shots\light.png
+
+      - name: 切成深色再截一次
+        working-directory: windows
+        env:
+          MCPHUB_PYTHON: ${{ github.workspace }}\.venv\Scripts\python.exe
+          MCPHUB_REPO: ${{ github.workspace }}
+          MCPHUB_DATA_DIR: ${{ runner.temp }}\mcphub-dark
+        run: |
+          # 深色不是把淺色反轉,是另一組色值 —— 兩組都要真的看過
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' `
+            -Name AppsUseLightTheme -Value 0
+          pwsh -File scripts/screenshot.ps1 `
+            -Exe MCPHub.App\bin\Release\net8.0-windows\MCPHub.exe `
+            -Out shots\dark.png
+
+      - name: 殘留程序檢查
+        if: always()
+        # 孤兒程序是這個專案真實發生過的問題。app 被 Stop-Process 殺掉時
+        # 走不到 OnExit,這裡驗的是 Job Object 那道保險有沒有生效。
+        shell: pwsh
+        run: |
+          $leftover = Get-CimInstance Win32_Process |
+            Where-Object { $_.CommandLine -like '*gateway.web*' }
+          if ($leftover) {
+            Write-Host "::error::app 結束後仍有後端殘留"
+            $leftover | Select-Object ProcessId, CommandLine | Format-List
+            exit 1
+          }
+          Write-Host "無殘留程序"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshots
+          path: windows/shots/*.png
+          if-no-files-found: error
+
   # ── 自足 bundle:驗證打包路徑 ──────────────────────────
   bundle:
     name: 自足 bundle

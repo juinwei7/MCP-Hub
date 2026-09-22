@@ -306,6 +306,26 @@ public sealed class BackendSupervisor : IDisposable
     /// </summary>
     public static int? PortHolder(int port = Port) => TcpTable.FindListenerPid(port);
 
+    /// <summary>
+    /// 接進 Claude 的指令。
+    ///
+    /// 環境變數不能省:hub_server 是 Claude 獨立啟動的,不經過這個 app。
+    /// 少了它們,聚合器會讀到專案目錄那份空的 actions.db,使用者在 app 裡的
+    /// 設定一個都不會生效 —— 而且不會有任何錯誤訊息,只是「工具怎麼都沒出現」。
+    ///
+    /// 用反引號換行而不是 \ ：Windows 的使用者多半在 PowerShell 裡貼,
+    /// 而 PowerShell 的續行符號是反引號,貼 \ 進去會被當成路徑分隔字元。
+    /// 純函式,方便測試。
+    /// </summary>
+    public static string ClaudeAddCommand(string dataDir, string python, string repo) =>
+        $"""
+        claude mcp add my-hub `
+          -e PYTHONPATH="{repo}" `
+          -e MCP_HUB_DB="{Path.Combine(dataDir, "actions.db")}" `
+          -e MCP_HUB_KEY="{Path.Combine(dataDir, ".secret_key")}" `
+          -- "{python}" -m gateway.hub_server
+        """;
+
     private static void WritePid(int pid)
     {
         try { File.WriteAllText(PidFile, pid.ToString()); }

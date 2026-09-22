@@ -1,0 +1,19 @@
+<Application x:Class="MCPHub.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!--
+      ShutdownMode 一定是 OnExplicitShutdown:這是系統匣 app,關掉視窗不等於結束。
+      預設的 OnLastWindowClose 會讓使用者按一下叉叉就把後端也收掉。
+
+      這裡只掛 Controls.xaml。色票由 ThemeManager 在啟動時依系統的淺色 / 深色
+      插到第 0 位,而且在使用者切換主題時換掉 —— 寫死在這裡就不會跟著變。
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme/Controls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
