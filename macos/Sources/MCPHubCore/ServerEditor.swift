@@ -45,7 +45,7 @@ struct ServerEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Style.Space.section) {
                     FormRow(label: "名稱") {
-                        TextField("OrgPulse", text: $name).textFieldStyle(.roundedBorder)
+                        TextField("My Server", text: $name).textFieldStyle(.roundedBorder)
                     }
 
                     if isNew {

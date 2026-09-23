@@ -276,7 +276,7 @@ public partial class MainWindow
               + (_state.StepTools.Count > 8 ? " …" : "")
             : "後端還沒回報可用的工具。";
         Detail.Children.Add(Ui.Field(this, "步驟", steps,
-            """JSON 陣列,例如 [{"id":"a","tool":"orgpulse__list_projects","args":{}}]。"""
+            """JSON 陣列,例如 [{"id":"a","tool":"myserver__list_items","args":{}}]。"""
             + available));
 
         var pars = Ui.Code(this, ParamsJson(t?.Params), 80);

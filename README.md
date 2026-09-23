@@ -1,8 +1,15 @@
 # MCP Hub
 
-**本機自架的 MCP 聚合器。** Claude 只連 **一個** Hub,Hub 把多台下游 MCP server 的工具合併曝露出來;原生 app 負責開關、歸類、加密金鑰、看每一次呼叫的記錄。
+**本機自架的 MCP 聚合器,附 macOS 與 Windows 原生 app。**
 
-> 定位:基礎設施,重點是便利性。各自部署 —— 你跑你自己的 Hub,不經手別人的流量或金鑰。
+Claude 只連 **一個** Hub,Hub 把多台下游 MCP server 的工具合併曝露出來;
+app 負責開關、歸類、加密金鑰、看每一次呼叫的記錄。
+
+> *A local-first MCP aggregator with native macOS and Windows apps.
+> Connect Claude to one hub instead of a dozen servers.*
+
+定位是**基礎設施**,重點是便利性。各自部署 —— 你跑你自己的 Hub,
+資料只留在你的機器上,不經手別人的流量或金鑰。
 
 [![CI](https://github.com/juinwei7/MCP-Hub/actions/workflows/ci.yml/badge.svg)](https://github.com/juinwei7/MCP-Hub/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -35,7 +42,8 @@ Hub 的雙角色:**對 Claude 是 MCP Server;對下游是 MCP Client**(連上就
 
 ## 安裝
 
-到 [Releases](https://github.com/juinwei7/MCP-Hub/releases) 下載,不需要先裝 Python 或 .NET —— runtime 都內附了。
+到 [Releases](https://github.com/juinwei7/MCP-Hub/releases) 下載。
+**不需要先裝 Python 或 .NET** —— runtime 都內附在裡面。
 
 | 平台 | 檔案 | 需求 |
 |---|---|---|
@@ -71,6 +79,14 @@ server 都原樣保留。Codex 的 TOML 是用文字層級增修的,不是整份
 `MCP_HUB_DB`、`MCP_HUB_KEY` 三個環境變數,少任何一個,聚合器就會去讀另一份空的
 資料庫,你在 app 裡的設定一個都不會生效,而且**不會有任何錯誤訊息**,
 只是「工具怎麼都沒出現」。
+
+### 加第一台下游
+
+開 app → **下游** → **新增下游**。填名稱與網址(或 stdio 的指令),存檔後按
+**全部重新檢查**。綠色色條代表連上了,旁邊會顯示抓到幾個工具。
+
+已經在 Claude 裡設定過 MCP server 的話,**設定 → 匯入下游**可以直接把它們
+讀進來,不用一台台重打。
 
 ---
 
@@ -230,6 +246,25 @@ Python 測試涵蓋 store CRUD、金鑰加解密、每個 API 端點的成功與
 
 ---
 
+## 回報問題
+
+開 [Issue](https://github.com/juinwei7/MCP-Hub/issues)。附上這些會快很多:
+
+| | |
+|---|---|
+| 平台與版本 | macOS 14 / Windows 11、app 的版本號 |
+| app 崩潰 | macOS `~/Library/Logs/DiagnosticReports/`、Windows `%LOCALAPPDATA%\MCP Hub\crash.log` |
+| 通知沒出現 | macOS `~/Library/Application Support/MCP Hub/notifier.log` |
+| 下游連不上 | 「記錄」那頁的錯誤訊息 |
+
+**不要附 `actions.db` 或 `.secret_key`** —— 前者含你的下游設定,後者是解開
+裡面密鑰的金鑰。
+
+這個專案是為了自己用而寫的,所以功能取捨會偏向作者的使用情境。
+PR 歡迎,但開之前先開個 Issue 談一下方向比較不會白做。
+
+---
+
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © weiwei
