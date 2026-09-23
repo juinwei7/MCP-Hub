@@ -199,11 +199,15 @@ jobs:
           cp -R "build/MCP Hub.app" "$STAGE/"
           # 拖進去就安裝 —— 沒有這個捷徑,多數人會直接在下載資料夾裡執行
           ln -s /Applications "$STAGE/Applications"
-          # ULMO(lzma)是這幾種格式裡最小的:實測比 ULFO 再小 3MB。
-          # 解壓縮比較慢,但那是一次性的安裝成本,而下載是每個人都要付的。
-          # 需要 macOS 10.15+,而這個 app 本來就要 14。
+          # 兩段式:先做未壓縮的 UDRW,再 convert 成 ULMO(lzma)。
+          #
+          # 不能直接 create -format ULMO —— 那條路會配置一大塊空閒空間,
+          # 而那些空白壓不掉。實測同樣的內容:create 出來 29MB,convert 出來 17MB。
+          # 而且 create 的壓縮結果還會隨 runner 的 macOS 版本浮動
+          #(本機 29MB、CI 36MB),convert 這條路沒有這個問題。
           hdiutil create -volname "MCP Hub" -srcfolder "$STAGE" \
-            -ov -format ULMO "$NAME.dmg"
+            -ov -format UDRW "$RUNNER_TEMP/rw.dmg"
+          hdiutil convert "$RUNNER_TEMP/rw.dmg" -format ULMO -o "$NAME.dmg"
           echo "DMG_NAME=$NAME" >> "$GITHUB_ENV"
 
       - name: 驗證產出的 DMG

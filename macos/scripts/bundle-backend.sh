@@ -77,7 +77,11 @@ PY="$BACKEND/bin/python3"
 # ── 裝依賴 ───────────────────────────────────────────────
 say "安裝依賴到 bundle"
 "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
-"$PY" -m pip install --quiet --no-compile -r "$REPO/requirements.txt" \
+# 刻意不加 --no-compile。少了 .pyc,Python 會在「第一次執行時」自己產生 ——
+# 而那是寫進已經簽章的 app bundle 裡,當場破壞封印(codesign --verify 會說
+# a sealed resource is missing or invalid)。打包時就編好,執行時就沒有
+# 任何東西需要寫。壓縮後的體積差不到 1MB,換一個不會自我破壞的 bundle。
+"$PY" -m pip install --quiet -r "$REPO/requirements.txt" \
     || die "依賴安裝失敗"
 
 # ── 複製後端原始碼 ───────────────────────────────────────
@@ -128,11 +132,18 @@ find "$BACKEND" -type d \( -name 'test' -o -name 'tests' \) -prune -exec rm -rf 
 #    最後會重新簽章,所以改動二進位是安全的。
 find "$BACKEND" -name "*.so" -exec strip -S -x {} + 2>/dev/null || true
 
-# 7. .pyc 保留不砍。砍掉的話 Python 會在執行時重新產生,
-#    而那是寫進「已簽章的 app bundle」裡 —— 會讓 codesign --verify 失敗。
-#    寧可多 2MB,也不要一個啟動後就自我破壞簽章的 app。
-find "$BACKEND" -type d -name '__pycache__' -path '*/site-packages/*' \
-     -prune -exec rm -rf {} + 2>/dev/null || true
+# 7. 把整包都先編成 .pyc。
+#
+#    少一個 .pyc,Python 就會在第一次匯入時自己補上 —— 而那是寫進已經簽章的
+#    app bundle 裡,當場破壞封印(codesign --verify 會說 a sealed resource is
+#    missing or invalid)。
+#
+#    這個問題只差一個檔案:實測比對啟動前後,整個 bundle 只多出
+#    concurrent/futures/__pycache__/thread.cpython-311.pyc —— runtime 本身
+#    漏編的一個標準庫模組。所以不能只編 gateway,要整包編過。
+#
+#    -q 兩次是連「無法編譯」的檔案也不要吵(stdlib 裡有幾個刻意壞掉的測試樣本)。
+"$PY" -m compileall -qq "$BACKEND" >/dev/null 2>&1 || true
 
 # ── 驗證 ─────────────────────────────────────────────────
 say "驗證內附的後端可用"

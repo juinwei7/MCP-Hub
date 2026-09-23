@@ -67,7 +67,10 @@ if (-not (Test-Path $py)) { Die "解開後找不到 $py" }
 # ── 裝依賴 ───────────────────────────────────────────────
 Say "安裝依賴到 bundle"
 & $py -m pip install --quiet --upgrade pip 2>&1 | Out-Null
-& $py -m pip install --quiet --no-compile -r (Join-Path $Repo 'requirements.txt')
+# 刻意不加 --no-compile:少了 .pyc,Python 會在第一次匯入時自己補上。
+# Windows 沒有簽章封印的問題,但寫進 Program Files 之類的唯讀位置會失敗,
+# 而且每次啟動都重編也是白費工。打包時編好就沒這些事。
+& $py -m pip install --quiet -r (Join-Path $Repo 'requirements.txt')
 if ($LASTEXITCODE -ne 0) { Die "依賴安裝失敗" }
 
 # ── 複製後端原始碼 ───────────────────────────────────────
@@ -106,8 +109,8 @@ Get-ChildItem -Path (Join-Path $backend 'Scripts') -Filter 'pip*' `
 Get-ChildItem -Recurse -Force -Directory $backend -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -in 'test','tests' } |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-Get-ChildItem -Recurse -Force -Directory -Filter '__pycache__' $backend |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+# 整包預編。少一個 .pyc,Python 就會在執行時補上 —— 而發佈目錄可能是唯讀的。
+& $py -m compileall -qq $backend 2>&1 | Out-Null
 
 # ── 驗證 ─────────────────────────────────────────────────
 # 驗的是「內附的這一份」能不能用,不是 runner 上剛好裝了什麼
