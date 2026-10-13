@@ -2,11 +2,12 @@
 Hub 共用執行器 —— 給 hub_server 與管理台試跑共用。
 """
 
+import json
 import time
 
 import mcp.types as types
 
-from gateway import composite, custom, pool, store
+from gateway import composite, custom, localfiles, pool, store
 
 SEP = "__"
 
@@ -28,11 +29,26 @@ def blocks_to_texts(blocks):
     return [b.text for b in blocks if getattr(b, "type", None) == "text"]
 
 
+def _expand_local_files(slug, tool, arguments):
+    """下游 schema 標了檔案欄位的,把 AI 給的本機路徑換成 base64(見 localfiles)。"""
+    cached = store.get_tool(slug, tool)
+    schema = json.loads(cached["input_schema"]) if cached and cached.get("input_schema") else None
+    if not localfiles.has_file_fields(schema):
+        return arguments
+    return localfiles.expand(schema, arguments)
+
+
 async def _forward(slug, tool, arguments):
     srv = store.get_server(slug)
     start = time.perf_counter()
     try:
-        result = await pool.call_tool(srv, tool, arguments)
+        payload = _expand_local_files(slug, tool, arguments)
+    except localfiles.LocalFileError as e:
+        store.log_call(slug, tool, arguments, "error", 0, str(e))
+        return text_block(str(e))
+    try:
+        # 記錄用原本的 arguments:只留路徑,不把整個檔案的 base64 寫進 log
+        result = await pool.call_tool(srv, tool, payload)
         store.log_call(slug, tool, arguments, "ok", int((time.perf_counter() - start) * 1000))
         return texts_to_blocks(result_to_texts(result))
     except Exception as e:

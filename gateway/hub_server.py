@@ -17,7 +17,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-from gateway import store, custom, composite, skills
+from gateway import store, custom, composite, skills, localfiles
 from gateway.dispatch import execute_named_tool, text_block
 
 SEP = "__"
@@ -85,7 +85,8 @@ async def list_tools() -> list[types.Tool]:
             out.append(types.Tool(
                 name=f"{slug}{SEP}{t.name}",
                 description=f"[{srv['name']}] {desc}{hint}",
-                inputSchema=t.inputSchema,
+                # 檔案欄位(contentEncoding: base64)改成收本機路徑,轉發時 Hub 讀檔
+                inputSchema=localfiles.for_client(t.inputSchema),
             ))
 
     # B. 自訂工具
