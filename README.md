@@ -123,8 +123,8 @@ server 都原樣保留。Codex 的 TOML 是用文字層級增修的,不是整份
 | Skill 調適與匯出 | ● | ○ |
 | 系統通知 | 需簽章 | ○ |
 
-> Windows app 的每個畫面都由 CI 渲染成 PNG 驗證過版面與深淺兩套配色,
-> 但**還沒有人在真的 Windows 桌面上完整操作過一輪** —— 互動行為只經過編譯器與型別檢查。
+> Windows app **還沒有人在真的 Windows 桌面上完整操作過一輪** —— 邏輯有單元測試
+> (含 Job Object 的實機驗證),但版面與互動只經過編譯器與型別檢查。
 > 遇到問題請附上 `%LOCALAPPDATA%\MCP Hub\crash.log`。
 
 ---
@@ -220,7 +220,7 @@ Python 測試涵蓋 store CRUD、金鑰加解密、每個 API 端點的成功與
 - 後端測試在 **Linux / macOS / Windows** 三平台各跑一次,而且從 `requirements.txt` **從零安裝** ——「本機剛好裝過」的依賴會當場被抓出來(`jinja2` 就是這樣現形的)。
 - 金鑰檔權限**實機驗證**:POSIX 檢查權限位元,Windows 解析 ACL。
 - macOS app 的生命週期驗收。
-- **Windows app 把每個畫面渲染成 PNG**。開發機是 macOS,這個 app 在本機執行不了 —— 編譯器抓得到型別錯誤,抓不到版面跑掉或深色下看不見。用 WPF 的 `Measure`/`Arrange` + `RenderTargetBitmap`,不需要桌面。
+- Windows client 的 **Job Object 實機驗證**:起真的子程序、關掉 job、確認被作業系統收掉。孤兒程序是這個專案真實發生過的問題。
 
 推一個 `v*` 的 tag 就發版:驗證 → 打包兩個平台 → 建 GitHub Release。
 
@@ -240,7 +240,7 @@ Python 測試涵蓋 store CRUD、金鑰加解密、每個 API 端點的成功與
 ## 尚未完成
 
 - Windows:全域快捷鍵、OpenAPI 匯入、服務目錄、Skill 調適、系統通知
-- Windows app 的實機互動驗證(目前只有 CI 的版面渲染)
+- Windows app 的版面與實機互動驗證(目前只有編譯器與型別檢查)
 - 程式碼簽章(macOS notarization / Windows Authenticode)—— 兩者都要付費憑證
 - Intel macOS 的預先打包版本
 - OAuth client 預先註冊(無 DCR 服務的 client_id / secret 設定)
