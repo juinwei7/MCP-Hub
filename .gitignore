@@ -32,6 +32,15 @@ build/
 # 規格文件只留本機,不進版控
 specs/
 
+# Claude Code 的工作區設定。這是公開 repo,而這些檔案裡是我自己的工作流程
+# 與內部服務名(orgpulse、fontrip、huanlan),不該出現在別人看得到的地方。
+#
+# 不只是「不加進去就好」—— 留在 untracked 狀態,只差一個 git add -A 就出去了,
+# 而這種東西推出去之後就算刪掉也還在歷史裡。所以明確擋掉。
+# (之後若要分享 .claude/commands/ 給別人,再單獨開例外。)
+CLAUDE.md
+.claude/
+
 # .NET
 windows/**/bin/
 windows/**/obj/
