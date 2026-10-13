@@ -15,7 +15,6 @@
 拿到答覆了嗎**。
 """
 import functools
-import time
 import unittest
 from contextlib import asynccontextmanager
 
@@ -30,25 +29,47 @@ SRV = {"slug": "probe", "transport": "http", "base_url": "http://127.0.0.1:1/mcp
 class _Session:
     """假的下游 session。list_tools / call_tool 的行為由建構參數決定。"""
 
-    def __init__(self, *, raises=None, hangs=False, delay=0.0, fail_calls=()):
+    def __init__(self, *, raises=None, hangs=False, delay=0.0, fail_calls=(), gate=0):
         self.raises = raises
         self.hangs = hangs
         self.delay = delay
         self.fail_calls = set(fail_calls)   # 第幾次呼叫要失敗(1 起算)
+        self.gate = gate                    # 等這麼多個呼叫到齊才一起放行(0 = 不等)
         self.calls = 0
+        self.arrived = 0
+        self.max_inflight = 0
+        self._inflight = 0
+        self._open = None
 
     async def _act(self):
         self.calls += 1
         nth = self.calls          # 先編號再 await,併發時順序才是確定的
-        if self.delay:
-            await anyio.sleep(self.delay)
-        if self.hangs:
-            await anyio.sleep(3600)
-        if nth in self.fail_calls:
-            raise RuntimeError(f"第 {nth} 次呼叫失敗")
-        if self.raises is not None:
-            raise self.raises
-        return "pong"
+        self._inflight += 1
+        self.max_inflight = max(self.max_inflight, self._inflight)
+        try:
+            if self.gate:
+                # 用柵欄而不是 sleep。「這幾個呼叫同時在飛」要是用時間去賭,
+                # 在只有兩核心的 CI 機器上就會變成擲骰子(這個測試第一版就是這樣
+                # 在 macOS runner 上掛掉的)。柵欄把它變成確定的事實:人沒到齊
+                # 誰都不准走,所以如果連線池其實是排隊的,第一個呼叫會直接卡死,
+                # 測試用「超過期限」明確失敗,而不是時好時壞。
+                if self._open is None:
+                    self._open = anyio.Event()
+                self.arrived += 1
+                if self.arrived >= self.gate:
+                    self._open.set()
+                await self._open.wait()
+            if self.delay:
+                await anyio.sleep(self.delay)
+            if self.hangs:
+                await anyio.sleep(3600)
+            if nth in self.fail_calls:
+                raise RuntimeError(f"第 {nth} 次呼叫失敗")
+            if self.raises is not None:
+                raise self.raises
+            return "pong"
+        finally:
+            self._inflight -= 1
 
     async def call_tool(self, name, arguments):
         return await self._act()
@@ -283,8 +304,9 @@ class RequestsOnOneConnectionRunConcurrently(unittest.TestCase):
     MCP 的 ClientSession 本來就支援併發請求,沒有理由讓它們排隊。
     """
 
-    def test_a_batch_takes_one_round_trip_not_n(self):
-        session = _Session(delay=0.2)
+    def test_a_batch_runs_in_parallel_not_one_at_a_time(self):
+        # 十個呼叫都到齊才放行。排隊的話第一個就永遠等不到人,測試會逾時失敗。
+        session = _Session(gate=10)
 
         async def body():
             results = []
@@ -292,23 +314,21 @@ class RequestsOnOneConnectionRunConcurrently(unittest.TestCase):
             async def one():
                 results.append(await pool.call_tool(SRV, "t", {}))
 
-            started = time.monotonic()
             async with anyio.create_task_group() as tg:
                 for _ in range(10):
                     tg.start_soon(one)
-            return time.monotonic() - started, results
+            return results
 
-        value, err, killed = anyio.run(_run_hub, _opener(session), body)
+        results, err, killed = anyio.run(_run_hub, _opener(session), body)
         self.assertFalse(killed)
-        self.assertIsNone(err)
-        elapsed, results = value
+        self.assertIsNone(err, "十個呼叫沒有同時在飛 —— 連線池還在排隊")
         self.assertEqual(results, ["pong"] * 10)
-        self.assertLess(elapsed, 1.0,
-                        f"10 個各 0.2 秒的呼叫花了 {elapsed:.1f} 秒 —— 排隊了(序列要 2 秒)")
+        self.assertEqual(session.max_inflight, 10)
 
     def test_one_failure_does_not_cancel_its_siblings(self):
         """一個請求失敗時,同一條連線上其他正在跑的請求要照樣跑完。"""
-        session = _Session(delay=0.1, fail_calls={1})
+        # 五個都到齊才放行,所以「失敗時其他四個確實在飛」是確定的,不是碰巧。
+        session = _Session(gate=5, fail_calls={1})
 
         async def body():
             outcomes = []
