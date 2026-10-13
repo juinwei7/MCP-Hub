@@ -7,7 +7,7 @@ import time
 
 import mcp.types as types
 
-from gateway import composite, custom, localfiles, pool, store
+from gateway import composite, custom, hub, localfiles, pool, store
 
 SEP = "__"
 
@@ -52,8 +52,11 @@ async def _forward(slug, tool, arguments):
         store.log_call(slug, tool, arguments, "ok", int((time.perf_counter() - start) * 1000))
         return texts_to_blocks(result_to_texts(result))
     except Exception as e:
-        store.log_call(slug, tool, arguments, "error", int((time.perf_counter() - start) * 1000), str(e))
-        return text_block(f"呼叫下游失敗:{e}")
+        # 下游的錯誤幾乎都被 anyio 包成 ExceptionGroup,str() 只會得到
+        # 「unhandled errors in a TaskGroup」—— 那對 AI 跟使用者都毫無資訊。
+        detail = hub.exception_details(e) or str(e)
+        store.log_call(slug, tool, arguments, "error", int((time.perf_counter() - start) * 1000), detail)
+        return text_block(f"呼叫下游失敗:{detail}")
 
 
 async def dispatch_tool(name, arguments):
