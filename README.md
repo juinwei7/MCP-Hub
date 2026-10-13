@@ -97,6 +97,8 @@ server 都原樣保留。Codex 的 TOML 是用文字層級增修的,不是整份
 - **複合工具** —— 依序串起多個工具,Claude 呼叫一次就拿到全部結果。
 - **總開關** —— 一個動作讓整個 Hub 停供。它**不動**每台下游的啟用狀態,恢復時你原本的開關還在。
 - **人工確認** —— 把危險工具標成「需確認」,呼叫時走對話內確認或票券核准。
+- **本機檔案參數** —— 下游在 inputSchema 用 `"contentEncoding": "base64"` 標出檔案欄位,AI 那邊就改填本機路徑,
+  Hub 轉發時讀檔換成 base64(單檔 25 MB 內);呼叫記錄只留路徑。不然 AI 得自己把整個檔案的 base64 打出來。
 - **金鑰靜態加密** —— bearer token / env / headers / OAuth token 以 Fernet 加密存 SQLite,金鑰另存 `.secret_key`。
 - **健康監測** —— 背景定時檢查下游,狀態以列首色條呈現,支援一鍵「全部檢查」。
 - **OAuth 2.1 + PKCE** —— 動態註冊(DCR)、自動換新 token。授權伺服器忘了我們的
@@ -202,7 +204,7 @@ macOS `~/Library/Application Support/MCP Hub/`、Windows `%LOCALAPPDATA%\MCP Hub
 ## 開發
 
 ```bash
-./.venv/bin/python -m unittest discover -s tests    # Python:172
+./.venv/bin/python -m unittest discover -s tests    # Python:178
 cd macos   && make test                             # Swift 16 + 生命週期驗收 10
 cd windows && dotnet test MCPHub.Core.Tests/...     # .NET:24(需 Windows)
 ```
@@ -230,6 +232,7 @@ Python 測試涵蓋 store CRUD、金鑰加解密、每個 API 端點的成功與
 - `.secret_key` 是解開 DB 內密鑰的金鑰,**請單獨備份**;遺失則 token 解不回來。`.gitignore` 已擋掉它與 `actions.db`。權限在 macOS / Linux 設為 0600,Windows 改用 ACL(`icacls`)—— `os.chmod` 在 Windows 只認 read-only 旗標,照抄等於沒保護。
 - OAuth 授權一律開系統瀏覽器,不用內嵌 webview:webview 看起來比較整合,但使用者沒辦法確認網址列,那正是釣魚最愛的形狀。
 - 匯出設定預設**不含**金鑰。匯出檔很容易被順手貼到別的地方。
+- 本機檔案參數會照 AI 給的路徑讀你讀得到的任何檔案,送給宣告那個欄位的下游。等於讓那台下游拿得到本機檔案 —— 不信任的下游別開,或把那支工具設成「需確認」,確認框會顯示路徑。
 - 匯出含本機絕對路徑(stdio 下游),搬機器可能要改(匯出檔內已附 `_note` 提醒)。
 
 ---
