@@ -114,7 +114,10 @@ class TestForward(unittest.TestCase):
         self.assertEqual(blocks[0].text, "ok")
         self.assertEqual(sent["cover"], base64.b64encode(b"img").decode())
         log = self._last_log()
-        self.assertIn(self.path, log["arguments"])
+        # arguments 存的是 JSON 字串。Windows 路徑裡的反斜線在 JSON 裡是跳脫過的,
+        # 所以拿原始路徑直接做子字串比對在 Windows 上一定不成立 —— 要先解回來比。
+        # (POSIX 上沒有反斜線所以永遠會過,這個缺陷只有 CI 的 Windows 格子看得到。)
+        self.assertEqual(json.loads(log["arguments"])["cover"], self.path)
         self.assertNotIn(sent["cover"], log["arguments"])
 
     def test_bad_path_is_reported_without_calling_downstream(self):
