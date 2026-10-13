@@ -204,12 +204,12 @@ macOS `~/Library/Application Support/MCP Hub/`、Windows `%LOCALAPPDATA%\MCP Hub
 ## 開發
 
 ```bash
-./.venv/bin/python -m unittest discover -s tests    # Python:178
+./.venv/bin/python -m unittest discover -s tests    # Python:192
 cd macos   && make test                             # Swift 16 + 生命週期驗收 10
 cd windows && dotnet test MCPHub.Core.Tests/...     # .NET:24(需 Windows)
 ```
 
-Python 測試涵蓋 store CRUD、金鑰加解密、每個 API 端點的成功與失敗路徑、**密鑰不會出現在任何回應中**,以及路由防呆(自動偵測參數路由遮蔽字面路由)。用臨時 DB / 金鑰,不污染正式資料。
+Python 測試涵蓋 store CRUD、金鑰加解密、每個 API 端點的成功與失敗路徑、**密鑰不會出現在任何回應中**、路由防呆(自動偵測參數路由遮蔽字面路由),以及**下游壞掉時 Hub 不會跟著斷線**(見 `tests/test_pool.py`)。用臨時 DB / 金鑰,不污染正式資料。
 
 `make test` 會實際啟動 app、殺掉程序、檢查有無殘留 —— 孤兒程序是這個專案真實發生過的問題。
 

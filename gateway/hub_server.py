@@ -11,13 +11,15 @@ Claude 看到的工具 = 兩種來源合併:
 
 import json
 import asyncio
+import time
 
 import anyio
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-from gateway import store, custom, composite, skills, localfiles
+from gateway import store, custom, composite, console, hub, skills, localfiles
+from gateway.config import LIST_TOOLS_BUDGET
 from gateway.dispatch import execute_named_tool, text_block
 
 SEP = "__"
@@ -52,6 +54,18 @@ _SKILL_WORKBENCH_TOOL = types.Tool(
 )
 
 
+def _cached_schema(cached):
+    """
+    快取裡的 inputSchema。壞掉或空的就退回「不收參數」的空 schema ——
+    一筆壞資料不該讓整份工具清單跟著報廢。
+    """
+    try:
+        schema = json.loads(cached["input_schema"] or "null")
+    except (TypeError, ValueError):
+        schema = None
+    return schema if isinstance(schema, dict) else {"type": "object", "properties": {}}
+
+
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
     store.init_db()
@@ -63,30 +77,39 @@ async def list_tools() -> list[types.Tool]:
     any_confirm = False  # 有沒有任何暴露出去的工具開了「需確認」
 
     # A. 下游聚合
+    #
+    # 這一段會真的連出去,而 Claude 正在等這個回應 —— 它的耐心有限(Claude Code
+    # 給 30 秒),等過頭就是整場工作階段斷線。所以:
+    #   · 整段共用一個總預算,用完的下游直接改用快取
+    #   · 連不上 / 太慢的下游也用快取,而不是讓它的工具整批消失
+    # 工具清單一直都存在 tools_cache(enabled、needs_confirm、描述覆寫都在那裡),
+    # 所以「稍微舊的清單」本來就是現成的,沒有理由寧願給空的。
+    deadline = time.monotonic() + LIST_TOOLS_BUDGET
     for srv in store.enabled_servers():
         slug = srv["slug"]
-        try:
-            from gateway import pool
-            tools = await pool.fetch_tools(srv)
-        except Exception:
-            continue
-        store.cache_tools(slug, [(t.name, t.description, t.inputSchema) for t in tools])
-        by_name = {t.name: t for t in tools}
+        budget = deadline - time.monotonic()
+        if budget <= 0:
+            console.eprint(f"[hub] tools/list 的連線預算用完,下游 {slug} 直接用快取")
+        else:
+            try:
+                from gateway import pool
+                with anyio.fail_after(budget):
+                    tools = await pool.fetch_tools(srv)
+                store.cache_tools(slug, [(t.name, t.description, t.inputSchema) for t in tools])
+            except Exception as e:
+                console.eprint(f"[hub] 下游 {slug} 取工具失敗,改用快取:{hub.exception_details(e)}")
         for ct in store.list_cached_tools(slug):
             if not ct["enabled"]:
-                continue
-            t = by_name.get(ct["name"])
-            if t is None:
                 continue
             hint = "(需人工確認)" if ct["needs_confirm"] else ""
             if ct["needs_confirm"]:
                 any_confirm = True
-            desc = ct.get("desc_override") or (t.description or "")  # 有策展描述就用覆寫
+            desc = ct.get("desc_override") or (ct.get("description") or "")  # 有策展描述就用覆寫
             out.append(types.Tool(
-                name=f"{slug}{SEP}{t.name}",
+                name=f"{slug}{SEP}{ct['name']}",
                 description=f"[{srv['name']}] {desc}{hint}",
                 # 檔案欄位(contentEncoding: base64)改成收本機路徑,轉發時 Hub 讀檔
-                inputSchema=localfiles.for_client(t.inputSchema),
+                inputSchema=localfiles.for_client(_cached_schema(ct)),
             ))
 
     # B. 自訂工具

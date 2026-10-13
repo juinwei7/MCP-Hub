@@ -94,7 +94,24 @@ def exception_details(err):
     if nested:
         parts = [exception_details(child) for child in nested]
         return " | ".join(dict.fromkeys(part for part in parts if part))
-    return str(err)
+    # 有些例外的 str() 是空的 —— 逾時(TimeoutError)就是,而逾時偏偏是最常見的
+    # 一種失敗。空字串會一路傳到呼叫記錄跟 AI 看到的訊息,變成「呼叫下游失敗:」
+    # 這種什麼都沒說的句子,所以至少把類別名稱補上。
+    return str(err) or _friendly(err)
+
+
+_FRIENDLY = {
+    "TimeoutError": "下游逾時沒有回應",
+    "CancelledError": "操作被取消",
+    "ClosedResourceError": "連線已關閉",
+    "BrokenResourceError": "連線中斷",
+    "EndOfStream": "連線被對方關閉",
+}
+
+
+def _friendly(err):
+    name = type(err).__name__
+    return _FRIENDLY.get(name, name)
 
 
 async def check_server(server):
